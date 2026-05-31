@@ -3,12 +3,38 @@ from __future__ import annotations
 import base64
 import io
 import random
-from typing import Literal
+from typing import Any, Literal
+from urllib.parse import urljoin
 
 import aiofiles
 
 from . import errors
 from .generator import Generator
+
+
+def _find_proxy_download(value: Any) -> str | None:
+    """Find the proxy image download path or token in a generate response."""
+    if isinstance(value, str):
+        if "downloadTemporaryImageViaProxy" in value:
+            return value
+        if value.startswith("v1.") and len(value) > 80:
+            return f"/downloadTemporaryImageViaProxy?t={value}"
+        return None
+
+    if isinstance(value, dict):
+        for item in value.values():
+            result = _find_proxy_download(item)
+            if result:
+                return result
+        return None
+
+    if isinstance(value, list):
+        for item in value:
+            result = _find_proxy_download(item)
+            if result:
+                return result
+
+    return None
 
 
 class ImageResult:
@@ -26,7 +52,8 @@ class ImageResult:
         height: int,
         guidance_scale: float,
         negative_prompt: str | None,
-        maybe_nsfw: bool
+        maybe_nsfw: bool,
+        proxy_download: str | None = None,
     ) -> None:
         self._generator: ImageGenerator = generator
 
@@ -48,6 +75,8 @@ class ImageResult:
         """Negative prompt."""
         self.maybe_nsfw: bool = maybe_nsfw
         """Whether the image may be NSFW."""
+        self.proxy_download: str | None = proxy_download
+        """Proxy download URL or token returned by Perchance, when available."""
     
     def __str__(self) -> str:
         return f"{self.image_id}.{self.file_extension}"
@@ -59,7 +88,10 @@ class ImageResult:
 
     async def download(self) -> io.BytesIO:
         """Download the image."""
-        url = (
+        urls = []
+        if self.proxy_download:
+            urls.append(urljoin(self._generator.BASE_URL + "/", self.proxy_download))
+        urls.append(
             f"{self._generator.BASE_URL}/downloadTemporaryImage"
             f"?imageId={self.image_id}"
         )
@@ -72,29 +104,36 @@ class ImageResult:
             )
             
             response_data = await page.evaluate("""
-                async (url) => {
-                    const response = await fetch(url);
-                    if (!response.ok) {
-                        return { ok: false, status: response.status };
+                async (urls) => {
+                    const failures = [];
+
+                    for (const url of urls) {
+                        const response = await fetch(url);
+                        if (!response.ok) {
+                            failures.push(`${response.status} ${url}`);
+                            continue;
+                        }
+
+                        const blob = await response.blob();
+
+                        const base64 = await new Promise(resolve => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                resolve(reader.result.split(",")[1]);
+                            };
+                            reader.readAsDataURL(blob);
+                        });
+
+                        return { ok: true, data: base64 };
                     }
 
-                    const blob = await response.blob();
-
-                    const base64 = await new Promise(resolve => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            resolve(reader.result.split(",")[1]);
-                        };
-                        reader.readAsDataURL(blob);
-                    });
-
-                    return { ok: true, data: base64 };
+                    return { ok: false, failures };
                 }
-                """, url)
+                """, urls)
                             
             if not response_data['ok']:
                 raise errors.ConnectionError(
-                    f"Failed to download image: {response_data['status']}"
+                    f"Failed to download image: {response_data['failures']}"
                 )
             
             data = base64.b64decode(response_data['data'])
@@ -223,6 +262,7 @@ class ImageGenerator(Generator):
                 height=response['height'],
                 guidance_scale=response['guidanceScale'],
                 negative_prompt=response['negativePrompt'],
-                maybe_nsfw=response['maybeNsfw']
+                maybe_nsfw=response['maybeNsfw'],
+                proxy_download=_find_proxy_download(response),
             )
                         
