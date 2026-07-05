@@ -178,9 +178,9 @@ class ImageGenerator(Generator):
         """
         Generate an image.
 
-        Self-healing: if the persisted userKey is rejected by the API,
-        the cache is invalidated and a fresh key is obtained via the
-        full Camoufox + Turnstile flow, then the request is retried.
+        Self-healing: if the userKey is rejected by the API, a fresh
+        key is obtained (which may trigger the full Turnstile flow if
+        Cloudflare clearance has expired) and the request is retried.
         """
         if shape == "portrait":
             resolution = "512x768"
@@ -205,7 +205,6 @@ class ImageGenerator(Generator):
             # Check if the key was rejected (no imageId = auth failure)
             if "imageId" not in response:
                 if attempt == 0:
-                    Generator._invalidate_key()
                     continue
                 raise errors.AuthenticationError(
                     f"User key rejected after retry. Response: {response}"

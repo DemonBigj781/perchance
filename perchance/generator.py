@@ -1,27 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import os
 import random
 import re
-import time
 from typing import Self
 
 from camoufox.async_api import AsyncCamoufox
 
 
-# Persist the userKey to disk so it survives across process restarts
-_KEY_FILE = os.path.join(os.path.expanduser("~"), ".openclaw", "agents", "main", "workspace", ".perchance_key")
-
-
 class Generator:
     """
-    Browser context manager using Camoufox (stealth Firefox).
+    Browser context manager using Camoufox.
 
-    The Perchance userKey is persisted to disk so it survives across
-    process restarts. The key is only refreshed when the API rejects
-    it (self-healing), not on a timer.
+    Authentication strategy:
+    1. Fast path: navigate directly to verifyUser. If Cloudflare
+       remembers this IP (from a recent Turnstile pass), the userKey
+       is returned immediately (under 1 second).
+    2. Fallback: if the fast path fails (token_required), load the
+       full Perchance generator page, inject a prompt, click Generate
+       to trigger the Turnstile challenge, and intercept the
+       verifyUser?token=*** response to extract the userKey.
     """
 
     def __init__(self) -> None:
@@ -48,53 +46,44 @@ class Generator:
         self._browser = await self._camoufox.__aenter__()
         self._context = await self._browser.new_context()
 
-    def _load_cached_key(self) -> str | None:
-        """Load the persisted userKey from disk."""
-        try:
-            if os.path.exists(_KEY_FILE):
-                with open(_KEY_FILE, "r") as f:
-                    data = json.load(f)
-                    return data.get("key")
-        except Exception:
-            pass
-        return None
-
-    def _save_cached_key(self, key: str) -> None:
-        """Persist the userKey to disk."""
-        try:
-            os.makedirs(os.path.dirname(_KEY_FILE), exist_ok=True)
-            with open(_KEY_FILE, "w") as f:
-                json.dump({"key": key}, f)
-        except Exception:
-            pass
-
-    @staticmethod
-    def _invalidate_key() -> None:
-        """Delete the persisted key (call when API rejects it)."""
-        try:
-            if os.path.exists(_KEY_FILE):
-                os.remove(_KEY_FILE)
-        except Exception:
-            pass
-
     async def _ensure_user_key(self) -> str | None:
         """
-        Return a valid userKey.
+        Return a valid Perchance userKey.
 
-        If a key is persisted on disk, return it immediately (fast path).
-        Only launch Camoufox and solve Turnstile when there is no key.
+        Tries the fast path first (direct verifyUser navigation).
+        Falls back to the full Turnstile flow if Cloudflare requires
+        a fresh challenge.
         """
-        cached = self._load_cached_key()
-        if cached:
-            return cached
-
-        # Need to obtain a new key via the full Turnstile flow
         await self._start()
 
+        # Fast path: direct navigation to verifyUser
+        try:
+            async with await self._context.new_page() as page:
+                await page.goto(
+                    f"https://image-generation.perchance.org/api/verifyUser"
+                    f"?thread=0&__cacheBust={random.random()}",
+                    wait_until="networkidle",
+                    timeout=15000,
+                )
+                content = await page.content()
+                match = re.search(r'"userKey":"([^"]+)"', content)
+                if match:
+                    return match.group(1)
+        except Exception:
+            pass
+
+        # Fallback: full Turnstile flow via Perchance generator page
+        return await self._get_key_via_turnstile()
+
+    async def _get_key_via_turnstile(self) -> str | None:
+        """
+        Load the Perchance AI image generator page, inject a dummy
+        prompt, click Generate, and intercept the verifyUser?token=***
+        response to extract the userKey.
+        """
         key_holder = {"key": None}
 
         async with await self._context.new_page() as page:
-            # Intercept verifyUser responses to capture userKey
             async def on_response(res):
                 if key_holder["key"]:
                     return
@@ -114,7 +103,6 @@ class Generator:
                 wait_until="networkidle",
                 timeout=60000,
             )
-            # Wait for the page and generator iframe to fully load
             await page.wait_for_timeout(15000)
 
             # Find the generator output iframe
@@ -152,8 +140,6 @@ class Generator:
                     break
                 await page.wait_for_timeout(1000)
 
-            if key_holder["key"]:
-                self._save_cached_key(key_holder["key"])
             return key_holder["key"]
 
     async def close(self) -> None:
