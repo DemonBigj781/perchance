@@ -52,7 +52,7 @@ class ImageResult:
         maybe_nsfw: bool,
         proxy_download: str | None = None,
     ) -> None:
-        self._generator: ImageGenerator = generator
+        self._generator = generator
         self.image_id = image_id
         self.file_extension = file_extension
         self.seed = seed
@@ -72,7 +72,7 @@ class ImageResult:
         return self.width, self.height
 
     async def download(self) -> io.BytesIO:
-        """Download the image."""
+        """Download the generated image."""
         urls = []
         if self.proxy_download:
             urls.append(urljoin(self._generator.BASE_URL + "/", self.proxy_download))
@@ -102,7 +102,7 @@ class ImageResult:
                 "  }"
                 "  return { ok: false, failures };"
                 "}",
-                urls
+                urls,
             )
             if not response_data["ok"]:
                 raise errors.ConnectionError(
@@ -112,7 +112,7 @@ class ImageResult:
             return io.BytesIO(data)
 
     async def save(self, filename: str | None = None) -> None:
-        """Download and save the image."""
+        """Download and save the image to disk."""
         file = filename or f"{self.image_id}.{self.file_extension}"
         async with aiofiles.open(file, "wb") as f:
             img = await self.download()
@@ -120,61 +120,24 @@ class ImageResult:
 
 
 class ImageGenerator(Generator):
-    """AI image generator with fast-path and Camoufox fallback."""
+    """AI image generator powered by Perchance."""
 
     BASE_URL = "https://image-generation.perchance.org/api"
 
     def __init__(self) -> None:
         super().__init__()
 
-    async def image(
-        self,
-        prompt: str,
-        *,
-        negative_prompt: str | None = None,
-        seed: int = -1,
-        shape: Literal["portrait", "square", "landscape"] = "square",
-        guidance_scale: float = 7.0,
-    ) -> ImageResult:
-        """
-        Generate an image.
-
-        Parameters
-        ----------
-        prompt : str
-            Image description.
-        negative_prompt : str | None
-            Things you do NOT want to see in the image.
-        seed : int
-            Generation seed.
-        shape : str
-            Image shape: portrait, square, or landscape.
-        guidance_scale : float
-            Accuracy of the prompt in range 1-30.
-        """
-        if shape == "portrait":
-            resolution = "512x768"
-        elif shape == "square":
-            resolution = "768x768"
-        elif shape == "landscape":
-            resolution = "768x512"
-        else:
-            raise ValueError(f"Invalid shape: {shape}")
-
+    async def _generate_with_key(self, key: str, resolution: str, prompt: str,
+                                  negative_prompt: str | None, seed: int,
+                                  guidance_scale: float) -> dict:
+        """Make the actual API call. Returns the JSON response or raises."""
         await self._start()
-        key = await self._ensure_user_key()
-        if not key:
-            raise errors.AuthenticationError(
-                "Failed to retrieve user key (both fast and Camoufox paths failed)"
-            )
-
         async with await self._context.new_page() as page:
             await page.goto(
                 f"{self.BASE_URL}/verifyUser"
                 f"?thread=0"
                 f"&__cacheBust={random.random()}"
             )
-
             url = (
                 f"{self.BASE_URL}/generate"
                 f"?userKey={key}"
@@ -191,21 +154,63 @@ class ImageGenerator(Generator):
                 "resolution": resolution,
                 "guidanceScale": guidance_scale,
             }
-
-            response = await page.evaluate(
+            return await page.evaluate(
                 "async ({ url, body }) => {"
-                "  const controller = new AbortController();"
-                "  window.abortFetch = () => controller.abort();"
                 "  const response = await fetch(url, {"
                 "    method: 'POST',"
                 "    headers: { 'Content-Type': 'application/json' },"
-                "    body: JSON.stringify(body),"
-                "    signal: controller.signal"
+                "    body: JSON.stringify(body)"
                 "  });"
                 "  return await response.json();"
                 "}",
                 {"url": url, "body": body},
             )
+
+    async def image(
+        self,
+        prompt: str,
+        *,
+        negative_prompt: str | None = None,
+        seed: int = -1,
+        shape: Literal["portrait", "square", "landscape"] = "square",
+        guidance_scale: float = 7.0,
+    ) -> ImageResult:
+        """
+        Generate an image.
+
+        Self-healing: if the cached userKey is rejected by the API,
+        the cache is invalidated and a fresh key is obtained via the
+        full Camoufox + Turnstile flow, then the request is retried.
+        """
+        if shape == "portrait":
+            resolution = "512x768"
+        elif shape == "square":
+            resolution = "768x768"
+        elif shape == "landscape":
+            resolution = "768x512"
+        else:
+            raise ValueError(f"Invalid shape: {shape}")
+
+        await self._start()
+
+        for attempt in range(2):
+            key = await self._ensure_user_key()
+            if not key:
+                raise errors.AuthenticationError("Failed to retrieve user key")
+
+            response = await self._generate_with_key(
+                key, resolution, prompt, negative_prompt, seed, guidance_scale
+            )
+
+            # Check if the key was rejected
+            if (response.get("status") == "failed_verification"
+                    or response.get("error") == "Invalid userKey"
+                    or "userKey" not in str(response)):
+                if attempt == 0:
+                    # Invalidate and retry
+                    Generator._invalidate_key()
+                    continue
+                raise errors.AuthenticationError("User key rejected after retry")
 
             return ImageResult(
                 generator=self,
@@ -220,3 +225,5 @@ class ImageGenerator(Generator):
                 maybe_nsfw=response["maybeNsfw"],
                 proxy_download=_find_proxy_download(response),
             )
+
+        raise errors.AuthenticationError("Failed to generate image after key refresh")
