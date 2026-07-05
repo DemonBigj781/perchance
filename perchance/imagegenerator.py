@@ -130,7 +130,7 @@ class ImageGenerator(Generator):
     async def _generate_with_key(self, key: str, resolution: str, prompt: str,
                                   negative_prompt: str | None, seed: int,
                                   guidance_scale: float) -> dict:
-        """Make the actual API call. Returns the JSON response or raises."""
+        """Make the actual API call. Returns the JSON response."""
         await self._start()
         async with await self._context.new_page() as page:
             await page.goto(
@@ -178,7 +178,7 @@ class ImageGenerator(Generator):
         """
         Generate an image.
 
-        Self-healing: if the cached userKey is rejected by the API,
+        Self-healing: if the persisted userKey is rejected by the API,
         the cache is invalidated and a fresh key is obtained via the
         full Camoufox + Turnstile flow, then the request is retried.
         """
@@ -202,15 +202,14 @@ class ImageGenerator(Generator):
                 key, resolution, prompt, negative_prompt, seed, guidance_scale
             )
 
-            # Check if the key was rejected
-            if (response.get("status") == "failed_verification"
-                    or response.get("error") == "Invalid userKey"
-                    or "userKey" not in str(response)):
+            # Check if the key was rejected (no imageId = auth failure)
+            if "imageId" not in response:
                 if attempt == 0:
-                    # Invalidate and retry
                     Generator._invalidate_key()
                     continue
-                raise errors.AuthenticationError("User key rejected after retry")
+                raise errors.AuthenticationError(
+                    f"User key rejected after retry. Response: {response}"
+                )
 
             return ImageResult(
                 generator=self,

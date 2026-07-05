@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import random
 import re
 import time
@@ -9,16 +11,18 @@ from typing import Self
 from camoufox.async_api import AsyncCamoufox
 
 
+# Persist the userKey to disk so it survives across process restarts
+_KEY_FILE = os.path.join(os.path.expanduser("~"), ".openclaw", "agents", "main", "workspace", ".perchance_key")
+
+
 class Generator:
     """
     Browser context manager using Camoufox (stealth Firefox).
 
-    Caches the Perchance userKey as a class variable so it persists
-    across instances within the same process. The key is only refreshed
-    when the API rejects it (self-healing), not on a timer.
+    The Perchance userKey is persisted to disk so it survives across
+    process restarts. The key is only refreshed when the API rejects
+    it (self-healing), not on a timer.
     """
-
-    _cached_key: str | None = None
 
     def __init__(self) -> None:
         super().__init__()
@@ -44,16 +48,45 @@ class Generator:
         self._browser = await self._camoufox.__aenter__()
         self._context = await self._browser.new_context()
 
+    def _load_cached_key(self) -> str | None:
+        """Load the persisted userKey from disk."""
+        try:
+            if os.path.exists(_KEY_FILE):
+                with open(_KEY_FILE, "r") as f:
+                    data = json.load(f)
+                    return data.get("key")
+        except Exception:
+            pass
+        return None
+
+    def _save_cached_key(self, key: str) -> None:
+        """Persist the userKey to disk."""
+        try:
+            os.makedirs(os.path.dirname(_KEY_FILE), exist_ok=True)
+            with open(_KEY_FILE, "w") as f:
+                json.dump({"key": key}, f)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _invalidate_key() -> None:
+        """Delete the persisted key (call when API rejects it)."""
+        try:
+            if os.path.exists(_KEY_FILE):
+                os.remove(_KEY_FILE)
+        except Exception:
+            pass
+
     async def _ensure_user_key(self) -> str | None:
         """
         Return a valid userKey.
 
-        If we have a cached key, return it immediately (fast path).
-        Only launch Camoufox and solve Turnstile when we have no key
-        or when the caller explicitly invalidates the cache.
+        If a key is persisted on disk, return it immediately (fast path).
+        Only launch Camoufox and solve Turnstile when there is no key.
         """
-        if Generator._cached_key:
-            return Generator._cached_key
+        cached = self._load_cached_key()
+        if cached:
+            return cached
 
         # Need to obtain a new key via the full Turnstile flow
         await self._start()
@@ -120,13 +153,8 @@ class Generator:
                 await page.wait_for_timeout(1000)
 
             if key_holder["key"]:
-                Generator._cached_key = key_holder["key"]
+                self._save_cached_key(key_holder["key"])
             return key_holder["key"]
-
-    @classmethod
-    def _invalidate_key(cls) -> None:
-        """Call when the API rejects the key to force a refresh."""
-        cls._cached_key = None
 
     async def close(self) -> None:
         """Close the browser and release all resources."""
