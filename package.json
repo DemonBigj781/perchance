@@ -1,0 +1,19 @@
+{
+  "name": "perchance",
+  "version": "1.0.0",
+  "description": "TypeScript Perchance API — AI image & text generation with Turnstile bypass",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/tests/"
+  },
+  "keywords": ["perchance", "ai", "image-generation", "text-generation", "turnstile-bypass"],
+  "license": "SEE LICENSE IN LICENSE",
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^22.0.0"
+  },
+  "dependencies": {}
+}
