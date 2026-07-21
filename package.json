@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "node --test dist/tests/"
+    "test": "tsc && node --test dist/tests/*.test.js"
   },
   "keywords": ["perchance", "ai", "image-generation", "text-generation", "turnstile-bypass"],
   "license": "SEE LICENSE IN LICENSE",
