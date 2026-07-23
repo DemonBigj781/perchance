@@ -30,7 +30,7 @@ export { ImageGenerator, ImageResult } from "./imageGenerator.js";
 // Text
 export { TextGenerator } from "./textGenerator.js";
 
-// Camoufox helper (optional, requires `camoufox` peer dep)
+// Camoufox helper (optional, requires `camoufox-js` peer dep)
 export { launchCamoufox, wrapContext } from "./camoufox.js";
 export type { LaunchOptions } from "./camoufox.js";
 

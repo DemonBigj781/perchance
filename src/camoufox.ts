@@ -2,19 +2,14 @@
  * Helper to launch Camoufox and adapt it to our BrowserContext interface.
  *
  * This is optional — consumers can inject any BrowserContext implementation.
- * This helper uses `camoufox` (the npm package wrapping the Camoufox browser)
+ * This helper uses `camoufox-js` (the npm package wrapping the Camoufox browser)
  * which provides anti-detect fingerprinting out of the box.
  */
 
 import type { BrowserContext, BrowserPage, BrowserFrame, BrowserResponse } from "./generator.js";
 
-// We dynamically import camoufox so it's an optional peer dependency.
+// We dynamically import camoufox-js so it's an optional peer dependency.
 // Users who already have a Playwright BrowserContext can inject it directly.
-
-type CamoufoxBrowser = {
-  newContext(): Promise<unknown>;
-  close(): Promise<void>;
-};
 
 type PlaywrightPage = {
   goto(url: string, opts?: { waitUntil?: string; timeout?: number }): Promise<unknown>;
@@ -136,30 +131,33 @@ export interface LaunchOptions {
 /**
  * Launch Camoufox and return a BrowserContext adapter.
  *
- * Requires the `camoufox` npm package as a peer dependency.
+ * Requires the `camoufox-js` npm package as a peer dependency.
  * ```
- * npm install camoufox
+ * npm install camoufox-js
  * ```
  */
 export async function launchCamoufox(options: LaunchOptions = {}): Promise<BrowserContext> {
   const { headless = true, ...rest } = options;
 
-  // Dynamic import so camoufox is optional
-  // @ts-ignore - camoufox is an optional peer dependency
-  const camoufoxModule = await import("camoufox");
-  const AsyncCamoufox = camoufoxModule.AsyncCamoufox ?? camoufoxModule.default;
+  // Dynamic import so camoufox-js is optional
+  // @ts-ignore - camoufox-js is an optional peer dependency
+  const { Camoufox } = await import("camoufox-js");
 
-  const camoufox = new AsyncCamoufox({
-    headless: headless ? "virtual" : false,
-    disable_coop: true,
-    i_know_what_im_doing: true,
+  const browserOrContext = await Camoufox({
+    headless,
+    humanize: true,
+    enable_cache: false,
     ...rest,
-  });
+  } as any);
 
-  const browser = await camoufox.__aenter__?.() ?? await camoufox.start?.();
-  if (!browser) throw new Error("Failed to launch Camoufox");
+  // camoufox-js may return either a Browser or a BrowserContext
+  if ('newPage' in browserOrContext && 'browser' in browserOrContext && typeof browserOrContext.browser === 'function') {
+    // Already a BrowserContext
+    return new PlaywrightContextAdapter(browserOrContext as PlaywrightContext);
+  }
 
-  const ctx = await browser.newContext();
+  // It's a Browser, need to create a context
+  const ctx = await (browserOrContext as any).newContext();
   return new PlaywrightContextAdapter(ctx as PlaywrightContext);
 }
 
