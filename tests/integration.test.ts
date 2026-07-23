@@ -25,14 +25,13 @@ import { join } from "node:path";
 
 const OUTPUT_DIR = join(process.cwd(), "test-output");
 
-// Skip the entire suite unless explicitly invoked via npm run test:integration
+// Skip the entire suite unless explicitly invoked via PERCHANCE_E2E=1
 const SHOULD_RUN = process.env["PERCHANCE_E2E"] === "1";
-const SKIP = { skip: SHOULD_RUN ? undefined : "Set PERCHANCE_E2E=1 to run integration tests" };
 
-describe("E2E: ImageGenerator", SKIP, () => {
+describe("E2E: ImageGenerator", { skip: !SHOULD_RUN }, () => {
   let generator: ImageGenerator;
 
-  it("launches Camoufox and generates an image", async () => {
+  it("launches Camoufox and generates an image", { timeout: 120_000 }, async () => {
     const ctx = await launchCamoufox({ headless: true });
     generator = new ImageGenerator();
     generator.setBrowserContext(ctx);
@@ -52,9 +51,9 @@ describe("E2E: ImageGenerator", SKIP, () => {
     } finally {
       await generator.close();
     }
-  }, 120_000);
+  });
 
-  it("downloads the generated image as a Buffer", async () => {
+  it("downloads the generated image as a Buffer", { timeout: 120_000 }, async () => {
     const ctx = await launchCamoufox({ headless: true });
     generator = new ImageGenerator();
     generator.setBrowserContext(ctx);
@@ -74,9 +73,9 @@ describe("E2E: ImageGenerator", SKIP, () => {
     } finally {
       await generator.close();
     }
-  }, 120_000);
+  });
 
-  it("saves the generated image to disk", async () => {
+  it("saves the generated image to disk", { timeout: 120_000 }, async () => {
     if (!existsSync(OUTPUT_DIR)) mkdirSync(OUTPUT_DIR, { recursive: true });
 
     const ctx = await launchCamoufox({ headless: true });
@@ -101,9 +100,9 @@ describe("E2E: ImageGenerator", SKIP, () => {
     } finally {
       await generator.close();
     }
-  }, 120_000);
+  });
 
-  it("handles key caching across multiple generations", async () => {
+  it("handles key caching across multiple generations", { timeout: 180_000 }, async () => {
     const ctx = await launchCamoufox({ headless: true });
     generator = new ImageGenerator();
     generator.setBrowserContext(ctx);
@@ -118,9 +117,9 @@ describe("E2E: ImageGenerator", SKIP, () => {
     } finally {
       await generator.close();
     }
-  }, 180_000);
+  });
 
-  it("cleanly closes the browser context", async () => {
+  it("cleanly closes the browser context", { timeout: 30_000 }, async () => {
     const ctx = await launchCamoufox({ headless: true });
     generator = new ImageGenerator();
     generator.setBrowserContext(ctx);
@@ -128,5 +127,5 @@ describe("E2E: ImageGenerator", SKIP, () => {
     // Just open and close without generating — should not throw
     await generator.close();
     assert.ok(true, "close() completed without error");
-  }, 30_000);
+  });
 });
