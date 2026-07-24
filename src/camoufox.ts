@@ -14,7 +14,7 @@ import type { BrowserContext, BrowserPage, BrowserFrame, BrowserResponse } from 
 type PlaywrightPage = {
   goto(url: string, opts?: { waitUntil?: string; timeout?: number }): Promise<unknown>;
   content(): Promise<string>;
-  evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T), ...args: unknown[]): Promise<T>;
+  evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T | Promise<T>), ...args: unknown[]): Promise<T>;
   frames(): PlaywrightFrame[];
   url(): string;
   on(event: string, handler: (response: PlaywrightResponse) => void): void;
@@ -25,7 +25,7 @@ type PlaywrightPage = {
 
 type PlaywrightFrame = {
   url(): string;
-  evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T), ...args: unknown[]): Promise<T>;
+  evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T | Promise<T>), ...args: unknown[]): Promise<T>;
 };
 
 type PlaywrightResponse = {
@@ -71,8 +71,8 @@ class PlaywrightPageAdapter implements BrowserPage {
     return await this.page.content();
   }
 
-  async evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T), ...args: unknown[]): Promise<T> {
-    return await this.page.evaluate(fn, ...args);
+  async evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T | Promise<T>), ...args: unknown[]): Promise<T> {
+    return await this.page.evaluate(fn as any, ...args);
   }
 
   frames(): BrowserFrame[] {
@@ -116,8 +116,8 @@ class PlaywrightFrameAdapter implements BrowserFrame {
     return this.frame.url();
   }
 
-  async evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T), ...args: unknown[]): Promise<T> {
-    return await this.frame.evaluate(fn, ...args);
+  async evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T | Promise<T>), ...args: unknown[]): Promise<T> {
+    return await this.frame.evaluate(fn as any, ...args);
   }
 }
 
@@ -147,6 +147,9 @@ export async function launchCamoufox(options: LaunchOptions = {}): Promise<Brows
     headless,
     humanize: true,
     enable_cache: false,
+    // Critical: allow cross-origin iframe interaction for Turnstile
+    disable_coop: true,
+    i_know_what_im_doing: true,
     ...rest,
   } as any);
 

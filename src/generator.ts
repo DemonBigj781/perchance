@@ -27,7 +27,7 @@ export interface BrowserContext {
 export interface BrowserPage {
   goto(url: string, opts?: { waitUntil?: string; timeout?: number }): Promise<void>;
   content(): Promise<string>;
-  evaluate<T = unknown>(fn: string | ((...args: any[]) => T), ...args: any[]): Promise<T>;
+  evaluate<T = unknown>(fn: string | ((...args: any[]) => T | Promise<T>), ...args: any[]): Promise<T>;
   frames(): BrowserFrame[];
   url(): string;
   on(event: string, handler: (response: BrowserResponse) => void): void;
@@ -38,7 +38,7 @@ export interface BrowserPage {
 
 export interface BrowserFrame {
   url(): string;
-  evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T), ...args: unknown[]): Promise<T>;
+  evaluate<T = unknown>(fn: string | ((...args: unknown[]) => T | Promise<T>), ...args: unknown[]): Promise<T>;
 }
 
 export interface BrowserResponse {
@@ -168,19 +168,13 @@ export abstract class Generator {
 
       // Inject a dummy prompt to enable the Generate button
       await target.evaluate(
-        '() => { const ta = document.querySelector("textarea");' +
-        ' if (ta) { ta.value = "test";' +
-        ' ta.dispatchEvent(new Event("input", {bubbles: true}));' +
-        ' ta.dispatchEvent(new Event("change", {bubbles: true})); } }',
+        () => { const ta = document.querySelector("textarea"); if (ta) { ta.value = "test"; ta.dispatchEvent(new Event("input", {bubbles: true})); ta.dispatchEvent(new Event("change", {bubbles: true})); } }
       );
       await page.waitForTimeout(1_000);
 
       // Click Generate to trigger the Turnstile verification flow
       await target.evaluate(
-        '() => { const btns = document.querySelectorAll("button");' +
-        ' for (const b of btns) {' +
-        ' if (b.textContent.toLowerCase().includes("generate"))' +
-        ' { b.click(); return; } } }',
+        () => { const btns = document.querySelectorAll("button"); for (const b of btns) { if ((b.textContent || "").toLowerCase().includes("generate")) { b.click(); return; } } }
       );
 
       // Wait for Turnstile to solve and userKey to arrive

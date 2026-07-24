@@ -87,11 +87,12 @@ export class ImageResult {
     const ctx = this.generator.getBrowserContext();
     if (!ctx) throw new ConnectionError("No browser context available");
 
+    const ORIGIN = "https://image-generation.perchance.org";
     const urls: string[] = [];
     if (this.proxyDownload) {
-      urls.push(`${BASE_URL}/${this.proxyDownload}`);
+      // proxyDownload already contains the full path (e.g. /api/downloadTemporaryImageViaProxy?t=...)
+      urls.push(`${ORIGIN}${this.proxyDownload}`);
     }
-    urls.push(`${BASE_URL}/downloadTemporaryImage?imageId=${this.imageId}`);
 
     const page = await ctx.newPage();
     try {
@@ -102,21 +103,21 @@ export class ImageResult {
       const result = await page.evaluate<
         { ok: true; data: string } | { ok: false; failures: string[] }
       >(
-        `async (urls) => {
-          const failures = [];
+        async (urls: string[]) => {
+          const failures: string[] = [];
           for (const url of urls) {
             const response = await fetch(url);
             if (!response.ok) { failures.push(response.status + ' ' + url); continue; }
             const blob = await response.blob();
-            const base64 = await new Promise(resolve => {
+            const base64 = await new Promise<string>(resolve => {
               const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result.split(',')[1]);
+              reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
               reader.readAsDataURL(blob);
             });
             return { ok: true, data: base64 };
           }
           return { ok: false, failures };
-        }`,
+        },
         urls,
       );
 
@@ -162,28 +163,37 @@ export class ImageGenerator extends Generator {
     const resolution = SHAPE_TO_RESOLUTION[shape];
     if (!resolution) throw new Error(`Invalid shape: ${shape}`);
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       const key = await this.ensureUserKey(BASE_URL);
 
       const response = await this.generateWithKey(
         key, resolution, prompt, negativePrompt, seed, guidanceScale,
       );
 
-      // Check if the key was rejected (no imageId = auth failure)
-      if (response.imageId === undefined) {
-        if (attempt === 0) {
-          this.invalidateKey();
-          continue;
-        }
-        throw new AuthenticationError(
-          `User key rejected after retry. Response: ${JSON.stringify(response)}`,
-        );
+      // Success
+      if (response.imageId !== undefined) {
+        return new ImageResult(this, response as ImageResultData);
       }
 
-      return new ImageResult(this, response as ImageResultData);
+      // Rate-limited: server says a previous request is still processing
+      const status = (response as Record<string, unknown>).status;
+      if (status === "waiting_for_prev_request_to_finish" && attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        continue;
+      }
+
+      // Auth failure: try refreshing the key once
+      if (attempt === 0) {
+        this.invalidateKey();
+        continue;
+      }
+
+      throw new AuthenticationError(
+        `User key rejected after retry. Response: ${JSON.stringify(response)}`,
+      );
     }
 
-    throw new AuthenticationError("Failed to generate image after key refresh");
+    throw new AuthenticationError("Failed to generate image after retries");
   }
 
   /** Make the actual API call. Returns the JSON response. */
@@ -222,14 +232,14 @@ export class ImageGenerator extends Generator {
       };
 
       return await page.evaluate<Partial<ImageResultData>>(
-        `async ({ url, body }) => {
+        async ({ url, body }: { url: string; body: Record<string, unknown> }) => {
           const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: JSON.stringify(body),
           });
           return await response.json();
-        }`,
+        },
         { url, body },
       );
     } finally {

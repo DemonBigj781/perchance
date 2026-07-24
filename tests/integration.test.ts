@@ -19,7 +19,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ImageGenerator, launchCamoufox } from "../dist/index.js";
+import { ImageGenerator, launchCamoufox } from "../src/index.js";
 import { existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -65,11 +65,11 @@ describe("E2E: ImageGenerator", { skip: !SHOULD_RUN }, () => {
 
       const buf = await result.download();
       assert.ok(buf.length > 0, "downloaded buffer should not be empty");
-      // PNG files start with the magic bytes 89 50 4E 47
-      // WebP files start with 52 49 46 46
+      // PNG: 89 50 4E 47 | WebP: 52 49 46 46 | JPEG: FF D8 FF
       const isPng = buf.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
       const isWebp = buf.subarray(0, 4).equals(Buffer.from([0x52, 0x49, 0x46, 0x46]));
-      assert.ok(isPng || isWebp, `downloaded file should be PNG or WebP (got: ${buf.subarray(0, 4).toString("hex")})`);
+      const isJpeg = buf.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
+      assert.ok(isPng || isWebp || isJpeg, `downloaded file should be PNG, WebP, or JPEG (got: ${buf.subarray(0, 4).toString("hex")})`);
     } finally {
       await generator.close();
     }
