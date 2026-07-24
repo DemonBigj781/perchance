@@ -3,11 +3,10 @@
  */
 
 import { Generator } from "./generator.js";
-import { AuthenticationError, ConnectionError, RateLimitError } from "./errors.js";
+import { ConnectionError } from "./errors.js";
 import type { GenerateTextOptions } from "./types.js";
 
 const BASE_URL = "https://text-generation.perchance.org/api";
-const USER_KEY_REGEX = /"userKey":"([^"]+)"/;
 const DEFAULT_TIMEOUT_MS = 5000;
 
 export class TextGenerator extends Generator {
@@ -43,21 +42,8 @@ export class TextGenerator extends Generator {
 
     const page = await ctx.newPage();
     try {
-      await page.goto(
-        `${BASE_URL}/verifyUser?thread=0&__cacheBust=${Math.random()}`,
-      );
-
-      const content = await page.content();
-      const match = content.match(USER_KEY_REGEX);
-
-      if (!match) {
-        if (content.includes("too_many_requests")) {
-          throw new RateLimitError("Rate limit exceeded");
-        }
-        throw new AuthenticationError("Failed to retrieve user key");
-      }
-
-      const key = match[1];
+      // Use the parent class key retrieval (fast path + Turnstile fallback + cache)
+      const key = await this.ensureUserKey(BASE_URL);
       const requestId = `aiTextCompletion${Math.floor(Math.random() * 2 ** 30)}`;
       const url =
         `${BASE_URL}/generate?userKey=${key}` +
@@ -91,7 +77,7 @@ export class TextGenerator extends Generator {
 
       // Start the fetch in the page
       const fetchPromise = page.evaluate(
-        `async ({ url, body }) => {
+        async ({ url, body }: { url: string; body: Record<string, unknown> }) => {
           try {
             const controller = new AbortController();
             (window as any).__perchanceAbort = () => controller.abort();
@@ -101,7 +87,7 @@ export class TextGenerator extends Generator {
               body: JSON.stringify(body),
               signal: controller.signal,
             });
-            const reader = response.body.getReader();
+            const reader = response.body!.getReader();
             const decoder = new TextDecoder();
             while (true) {
               const { value, done } = await reader.read();
@@ -113,7 +99,7 @@ export class TextGenerator extends Generator {
           } catch (e) {
             await (window as any).__perchanceOnError(String(e));
           }
-        }`,
+        },
         { url, body },
       );
 
@@ -132,7 +118,7 @@ export class TextGenerator extends Generator {
           }
         } else {
           if (Date.now() - lastChunkTime > timeoutMs) {
-            await page.evaluate(`(window as any).__perchanceAbort?.()`);
+            await page.evaluate(() => { (window as any).__perchanceAbort?.(); });
             throw new ConnectionError("Stream timed out");
           }
           await new Promise((r) => setTimeout(r, 50));
