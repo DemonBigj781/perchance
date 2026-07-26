@@ -122,7 +122,8 @@ export class ImageResult {
       );
 
       if (!result.ok) {
-        throw new ConnectionError(`Failed to download image: ${result.failures.join(", ")}`);
+        const errResult = result as { ok: false; failures: string[] };
+        throw new ConnectionError(`Failed to download image: ${errResult.failures.join(", ")}`);
       }
 
       return Buffer.from(result.data, "base64");

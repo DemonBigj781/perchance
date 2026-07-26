@@ -154,9 +154,9 @@ export async function launchCamoufox(options: LaunchOptions = {}): Promise<Brows
   } as any);
 
   // camoufox-js may return either a Browser or a BrowserContext
-  if ('newPage' in browserOrContext && 'browser' in browserOrContext && typeof browserOrContext.browser === 'function') {
+  if ('newPage' in browserOrContext && 'browser' in browserOrContext && typeof (browserOrContext as any).browser === 'function') {
     // Already a BrowserContext
-    return new PlaywrightContextAdapter(browserOrContext as PlaywrightContext);
+    return new PlaywrightContextAdapter(browserOrContext as unknown as PlaywrightContext);
   }
 
   // It's a Browser, need to create a context
