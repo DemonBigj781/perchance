@@ -1,3 +1,5 @@
 #!/usr/bin/env node
 
-export {};
+import { runCli } from "./cli/program.js";
+
+process.exitCode = await runCli(process.argv);
