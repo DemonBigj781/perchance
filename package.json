@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsc",
     "prepack": "npm run build",
-    "test": "tsc && node --test dist/tests/cli.test.js dist/tests/errors.test.js dist/tests/generator.test.js dist/tests/imageGenerator.test.js dist/tests/package.test.js dist/tests/textGenerator.test.js dist/tests/utils.test.js",
+    "test": "tsc && node --test dist/tests/camoufox.test.js dist/tests/cli.test.js dist/tests/errors.test.js dist/tests/generator.test.js dist/tests/imageGenerator.test.js dist/tests/package.test.js dist/tests/textGenerator.test.js dist/tests/utils.test.js",
     "test:integration": "PERCHANCE_E2E=1 tsc && node --test dist/tests/integration.test.js"
   },
   "keywords": [

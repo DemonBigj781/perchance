@@ -7,6 +7,7 @@
  */
 
 import type { BrowserContext, BrowserPage, BrowserFrame, BrowserResponse } from "./generator.js";
+import { createOwnedClose } from "./internal/browserOwnership.js";
 
 // We dynamically import camoufox-js so it's an optional peer dependency.
 // Users who already have a Playwright BrowserContext can inject it directly.
@@ -38,12 +39,18 @@ type PlaywrightContext = {
   close(): Promise<void>;
 };
 
+type PlaywrightBrowser = {
+  close(): Promise<void>;
+};
+
 /** Adapter that wraps a Playwright/Camoufox context into our interface. */
 class PlaywrightContextAdapter implements BrowserContext {
   private ctx: PlaywrightContext;
+  private closeOwned: () => Promise<void>;
 
-  constructor(ctx: PlaywrightContext) {
+  constructor(ctx: PlaywrightContext, owner?: PlaywrightBrowser) {
     this.ctx = ctx;
+    this.closeOwned = createOwnedClose(ctx, owner);
   }
 
   async newPage(): Promise<BrowserPage> {
@@ -52,7 +59,7 @@ class PlaywrightContextAdapter implements BrowserContext {
   }
 
   async close(): Promise<void> {
-    await this.ctx.close();
+    await this.closeOwned();
   }
 }
 
@@ -160,8 +167,11 @@ export async function launchCamoufox(options: LaunchOptions = {}): Promise<Brows
   }
 
   // It's a Browser, need to create a context
-  const ctx = await (browserOrContext as any).newContext();
-  return new PlaywrightContextAdapter(ctx as PlaywrightContext);
+  const browser = browserOrContext as unknown as PlaywrightBrowser & {
+    newContext(): Promise<PlaywrightContext>;
+  };
+  const ctx = await browser.newContext();
+  return new PlaywrightContextAdapter(ctx, browser);
 }
 
 /**
