@@ -90,6 +90,43 @@ perchance browser path
 perchance browser version
 ```
 
+## Bundled Linux AppImage
+
+Build a self-contained x86_64 AppImage that includes Perchance, the official
+Node.js 24 LTS runtime, production npm dependencies, and the complete Camoufox
+browser installation:
+
+```bash
+npm run appimage
+```
+
+The builder expects Camoufox `v152.0.4-beta.28` in
+`${CAMOUFOX_INSTALL_DIR:-$HOME/.cache/camoufox}`. It also requires `curl`,
+`sha256sum`, `tar`, `ldd`, and `appimagetool`. Set `APPIMAGETOOL` when the tool
+is not available on `PATH` or at `$HOME/AppImages/appimagetool`.
+
+The resulting files are:
+
+```text
+release/Perchance-1.0.0-x86_64.AppImage
+release/Perchance-1.0.0-x86_64.AppImage.sha256
+```
+
+Running the AppImage without arguments displays CLI help. Image and text
+commands work the same as the globally installed command. The browser payload
+inside an AppImage is immutable, so `browser path` and `browser version` are
+available while `browser fetch` instructs you to replace or rebuild the
+AppImage.
+
+Verify an existing artifact with:
+
+```bash
+npm run verify:appimage -- release/Perchance-1.0.0-x86_64.AppImage
+```
+
+The AppImage targets modern glibc-based x86_64 desktop Linux. The host still
+provides the kernel, glibc, graphics drivers, and display integration.
+
 ## Usage (TypeScript API)
 
 ```typescript

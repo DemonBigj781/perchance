@@ -11,6 +11,9 @@ node_modules/
 # Ignore build output
 dist/
 *.tsbuildinfo
+build/appimage/
+release/*.AppImage
+release/*.AppImage.sha256
 
 # Ignore system and IDE-specific files
 *.pyo
