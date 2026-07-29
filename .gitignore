@@ -40,3 +40,6 @@ virtualenv/
 
 # Ignore git extensions
 git-filter-repo
+
+# Ignore isolated development worktrees
+.worktrees/
