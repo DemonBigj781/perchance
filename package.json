@@ -15,6 +15,12 @@
       "import": "./dist/src/camoufox.js"
     }
   },
+  "bin": {
+    "perchance": "dist/src/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc",
     "test": "tsc && node --test dist/tests/errors.test.js dist/tests/generator.test.js dist/tests/imageGenerator.test.js dist/tests/package.test.js dist/tests/textGenerator.test.js dist/tests/utils.test.js",
@@ -34,6 +40,7 @@
   },
   "dependencies": {
     "camoufox-js": "0.11.5",
+    "commander": "^14.0.3",
     "playwright-core": "1.58.0"
   },
   "allowScripts": {

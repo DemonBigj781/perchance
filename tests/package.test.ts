@@ -40,4 +40,16 @@ describe("package", () => {
 
     assert.equal(typeof camoufoxApi.launchCamoufox, "function");
   });
+
+  it("declares the perchance executable", async () => {
+    const packageJson = JSON.parse(
+      await readFile(resolve(projectRoot, "package.json"), "utf8"),
+    ) as { bin?: Record<string, string>; engines?: { node?: string } };
+    const executable = packageJson.bin?.perchance;
+
+    assert.equal(executable, "dist/src/cli.js");
+    assert.equal(packageJson.engines?.node, ">=22");
+    assert.ok(executable);
+    await access(resolve(projectRoot, executable));
+  });
 });
