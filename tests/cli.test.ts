@@ -23,6 +23,9 @@ interface FakeState {
   textError?: Error;
   browserCommands: string[][];
   browserCommandStatus: number;
+  signalHandlers: Map<"SIGINT" | "SIGTERM", () => void>;
+  terminatedSignals: Array<"SIGINT" | "SIGTERM">;
+  imageGate?: Promise<void>;
 }
 
 function createFakeDependencies(): CliDependencies & { state: FakeState } {
@@ -39,6 +42,8 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
     textChunks: [],
     browserCommands: [],
     browserCommandStatus: 0,
+    signalHandlers: new Map(),
+    terminatedSignals: [],
   };
   const browser: BrowserContext = {
     async newPage() {
@@ -60,6 +65,7 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
         setBrowserContext() {},
         async image(prompt, options) {
           state.imageCalls.push({ prompt, options });
+          await state.imageGate;
           if (state.imageError) throw state.imageError;
           return {
             imageId: "image-1",
@@ -114,8 +120,12 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
     async mkdir(path) {
       state.mkdirPaths.push(path);
     },
-    onSignal() {
-      return () => {};
+    onSignal(signal, handler) {
+      state.signalHandlers.set(signal, handler);
+      return () => state.signalHandlers.delete(signal);
+    },
+    terminateSignal(signal) {
+      state.terminatedSignals.push(signal);
     },
   };
 }
@@ -398,5 +408,33 @@ describe("browser command", () => {
     );
 
     assert.equal(status, 7);
+  });
+});
+
+describe("browser lifecycle", () => {
+  it("closes an active browser once when interrupted", async () => {
+    const dependencies = createFakeDependencies();
+    let releaseImage!: () => void;
+    dependencies.state.imageGate = new Promise<void>((resolve) => {
+      releaseImage = resolve;
+    });
+
+    const command = runCli(
+      ["node", "perchance", "image", "waiting fox"],
+      dependencies,
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    const interrupt = dependencies.state.signalHandlers.get("SIGINT");
+    assert.ok(interrupt, "SIGINT handler must be registered after launch");
+    interrupt();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+    assert.deepEqual(dependencies.state.terminatedSignals, ["SIGINT"]);
+    releaseImage();
+    assert.equal(await command, 0);
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+    assert.equal(dependencies.state.signalHandlers.size, 0);
   });
 });

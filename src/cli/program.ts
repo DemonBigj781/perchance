@@ -64,6 +64,7 @@ export interface CliDependencies {
     signal: "SIGINT" | "SIGTERM",
     handler: () => void,
   ): () => void;
+  terminateSignal(signal: "SIGINT" | "SIGTERM"): void;
 }
 
 const IMAGE_SHAPES: readonly ImageShape[] = [
@@ -134,7 +135,35 @@ const productionDependencies: CliDependencies = {
     process.once(signal, handler);
     return () => process.off(signal, handler);
   },
+  terminateSignal(signal) {
+    process.kill(process.pid, signal);
+  },
 };
+
+async function withBrowserContext<T>(
+  dependencies: CliDependencies,
+  visible: boolean | undefined,
+  action: (context: BrowserContext) => Promise<T>,
+): Promise<T> {
+  const context = await dependencies.launchBrowser({ headless: !visible });
+  let closePromise: Promise<void> | undefined;
+  const closeOnce = (): Promise<void> => {
+    closePromise ??= context.close();
+    return closePromise;
+  };
+  const removers = (["SIGINT", "SIGTERM"] as const).map((signal) =>
+    dependencies.onSignal(signal, () => {
+      void closeOnce().finally(() => dependencies.terminateSignal(signal));
+    })
+  );
+
+  try {
+    return await action(context);
+  } finally {
+    for (const remove of removers) remove();
+    await closeOnce();
+  }
+}
 
 interface ImageCommandOptions extends OptionValues {
   output?: string;
@@ -191,11 +220,7 @@ function addImageCommand(
     .option("--json", "print structured JSON")
     .option("--visible", "show the Camoufox window")
     .action(async (prompt: string, options: ImageCommandOptions) => {
-      const context = await dependencies.launchBrowser({
-        headless: !options.visible,
-      });
-
-      try {
+      await withBrowserContext(dependencies, options.visible, async (context) => {
         const generator = dependencies.createImageGenerator();
         generator.setBrowserContext(context);
 
@@ -232,9 +257,7 @@ function addImageCommand(
         } else {
           dependencies.stdout(`${savedPath}\n`);
         }
-      } finally {
-        await context.close();
-      }
+      });
     });
 }
 
@@ -260,11 +283,7 @@ function addTextCommand(
     .option("--json", "print structured JSON")
     .option("--visible", "show the Camoufox window")
     .action(async (prompt: string, options: TextCommandOptions) => {
-      const context = await dependencies.launchBrowser({
-        headless: !options.visible,
-      });
-
-      try {
+      await withBrowserContext(dependencies, options.visible, async (context) => {
         const generator = dependencies.createTextGenerator();
         generator.setBrowserContext(context);
 
@@ -290,9 +309,7 @@ function addTextCommand(
         if (options.json) {
           dependencies.stdout(`${JSON.stringify({ text: chunks.join("") })}\n`);
         }
-      } finally {
-        await context.close();
-      }
+      });
     });
 }
 
