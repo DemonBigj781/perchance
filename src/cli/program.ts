@@ -54,6 +54,7 @@ export interface CliDependencies {
   createImageGenerator(): ImageGeneratorLike;
   createTextGenerator(): TextGeneratorLike;
   runBrowserCommand(args: string[]): Promise<number>;
+  isImmutableBundle(): boolean;
   stdout(text: string): void;
   stderr(text: string): void;
   cwd(): string;
@@ -114,6 +115,7 @@ const productionDependencies: CliDependencies = {
   createImageGenerator: () => new ImageGenerator(),
   createTextGenerator: () => new TextGenerator(),
   runBrowserCommand: runCamoufoxCommand,
+  isImmutableBundle: () => process.env.PERCHANCE_APPIMAGE === "1",
   stdout: (text) => process.stdout.write(text),
   stderr: (text) => process.stderr.write(text),
   cwd: () => process.cwd(),
@@ -327,6 +329,14 @@ function addBrowserCommand(
       .command(command)
       .description(`${command} Camoufox browser information`)
       .action(async () => {
+        if (command === "fetch" && dependencies.isImmutableBundle()) {
+          dependencies.stderr(
+            "Error: Camoufox is embedded in this immutable AppImage. " +
+              "Replace or rebuild the AppImage to update it.\n",
+          );
+          setStatus(1);
+          return;
+        }
         setStatus(await dependencies.runBrowserCommand([command]));
       });
   }

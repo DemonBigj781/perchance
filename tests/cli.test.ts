@@ -23,6 +23,7 @@ interface FakeState {
   textError?: Error;
   browserCommands: string[][];
   browserCommandStatus: number;
+  immutableBundle: boolean;
   signalHandlers: Map<"SIGINT" | "SIGTERM", () => void>;
   terminatedSignals: Array<"SIGINT" | "SIGTERM">;
   imageGate?: Promise<void>;
@@ -42,6 +43,7 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
     textChunks: [],
     browserCommands: [],
     browserCommandStatus: 0,
+    immutableBundle: false,
     signalHandlers: new Map(),
     terminatedSignals: [],
   };
@@ -101,6 +103,9 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
     async runBrowserCommand(args) {
       state.browserCommands.push(args);
       return state.browserCommandStatus;
+    },
+    isImmutableBundle() {
+      return state.immutableBundle;
     },
     stdout(text) {
       state.stdout += text;
@@ -408,6 +413,24 @@ describe("browser command", () => {
     );
 
     assert.equal(status, 7);
+  });
+
+  it("rejects browser fetch inside an immutable AppImage", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.immutableBundle = true;
+
+    const status = await runCli(
+      ["node", "perchance", "browser", "fetch"],
+      dependencies,
+    );
+
+    assert.equal(status, 1);
+    assert.deepEqual(dependencies.state.browserCommands, []);
+    assert.equal(
+      dependencies.state.stderr,
+      "Error: Camoufox is embedded in this immutable AppImage. " +
+        "Replace or rebuild the AppImage to update it.\n",
+    );
   });
 });
 
