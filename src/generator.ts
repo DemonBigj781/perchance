@@ -84,7 +84,8 @@ export abstract class Generator {
       return this.keyCache.key;
     }
 
-    const key = await this.getKeyFast(baseUrl) ?? await this.getKeyViaTurnstile();
+    const key = await this.getKeyFast(baseUrl) ??
+      await this.getKeyViaTurnstile(baseUrl);
     if (!key) {
       throw new AuthenticationError("Failed to retrieve user key");
     }
@@ -131,17 +132,23 @@ export abstract class Generator {
    * inject a dummy prompt, click Generate, and intercept the
    * verifyUser?token=*** response to extract the userKey.
    */
-  private async getKeyViaTurnstile(): Promise<string | null> {
+  private async getKeyViaTurnstile(baseUrl: string): Promise<string | null> {
     if (!this.browserContext) return null;
 
     let key: string | null = null;
     const page = await this.browserContext.newPage();
+    const isTextGeneration = baseUrl.startsWith(
+      "https://text-generation.perchance.org/api",
+    );
+    const generatorUrl = isTextGeneration
+      ? "https://perchance.org/ai-text-generator"
+      : "https://perchance.org/ai-text-to-image-generator";
 
     try {
       // Intercept verifyUser responses
       page.on("response", async (res: BrowserResponse) => {
         if (key) return;
-        if (res.url().includes("verifyUser")) {
+        if (res.url().startsWith(`${baseUrl}/verifyUser`)) {
           try {
             const body = await res.text();
             const m = body.match(USER_KEY_REGEX);
@@ -151,31 +158,38 @@ export abstract class Generator {
       });
 
       await page.goto(
-        "https://perchance.org/ai-text-to-image-generator",
-        { waitUntil: "networkidle", timeout: 60_000 },
-      );
-      await page.waitForTimeout(15_000);
-
-      // Find the generator output iframe
-      const target = page.frames().find(
-        (f) =>
-          f.url().includes("perchance.org") &&
-          f.url().includes("ai-text-to-image-generator") &&
-          f.url() !== page.url(),
+        generatorUrl,
+        {
+          waitUntil: isTextGeneration ? "domcontentloaded" : "networkidle",
+          timeout: 60_000,
+        },
       );
 
-      if (!target) return null;
+      if (!isTextGeneration) {
+        await page.waitForTimeout(15_000);
+        if (key) return key;
 
-      // Inject a dummy prompt to enable the Generate button
-      await target.evaluate(
-        () => { const ta = document.querySelector("textarea"); if (ta) { ta.value = "test"; ta.dispatchEvent(new Event("input", {bubbles: true})); ta.dispatchEvent(new Event("change", {bubbles: true})); } }
-      );
-      await page.waitForTimeout(1_000);
+        // Find the generator output iframe
+        const target = page.frames().find(
+          (f) =>
+            f.url().includes("perchance.org") &&
+            f.url().includes("ai-text-to-image-generator") &&
+            f.url() !== page.url(),
+        );
 
-      // Click Generate to trigger the Turnstile verification flow
-      await target.evaluate(
-        () => { const btns = document.querySelectorAll("button"); for (const b of btns) { if ((b.textContent || "").toLowerCase().includes("generate")) { b.click(); return; } } }
-      );
+        if (!target) return null;
+
+        // Inject a dummy prompt to enable the Generate button
+        await target.evaluate(
+          () => { const ta = document.querySelector("textarea"); if (ta) { ta.value = "test"; ta.dispatchEvent(new Event("input", {bubbles: true})); ta.dispatchEvent(new Event("change", {bubbles: true})); } }
+        );
+        await page.waitForTimeout(1_000);
+
+        // Click Generate to trigger the Turnstile verification flow
+        await target.evaluate(
+          () => { const btns = document.querySelectorAll("button"); for (const b of btns) { if ((b.textContent || "").toLowerCase().includes("generate")) { b.click(); return; } } }
+        );
+      }
 
       // Wait for Turnstile to solve and userKey to arrive
       const deadline = Date.now() + TURNSTILE_TIMEOUT_MS;

@@ -44,9 +44,14 @@ export class TextGenerator extends Generator {
     try {
       // Use the parent class key retrieval (fast path + Turnstile fallback + cache)
       const key = await this.ensureUserKey(BASE_URL);
+      await page.goto(
+        `${BASE_URL}/verifyUser?thread=0&__cacheBust=${Math.random()}`,
+        { waitUntil: "networkidle", timeout: 15_000 },
+      );
       const requestId = `aiTextCompletion${Math.floor(Math.random() * 2 ** 30)}`;
       const url =
-        `${BASE_URL}/generate?userKey=${key}` +
+        `${BASE_URL}/generate?userKey=${encodeURIComponent(key)}` +
+        "&thread=0" +
         `&requestId=${requestId}` +
         `&__cacheBust=${Math.random()}`;
 

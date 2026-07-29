@@ -5,7 +5,12 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { Generator } from "../src/generator.js";
-import type { BrowserContext, BrowserPage } from "../src/generator.js";
+import type {
+  BrowserContext,
+  BrowserFrame,
+  BrowserPage,
+  BrowserResponse,
+} from "../src/generator.js";
 
 /** A concrete subclass for testing the abstract Generator. */
 class TestGenerator extends Generator {}
@@ -37,6 +42,7 @@ function createMockContext(pages: BrowserPage[]): BrowserContext {
 const KEY_RESPONSE = '<html>{"userKey":"test-key-12345"}</html>';
 const NO_KEY_RESPONSE = "<html>token_required</html>";
 const BASE_URL = "https://image-generation.perchance.org/api";
+const TEXT_BASE_URL = "https://text-generation.perchance.org/api";
 
 describe("generator", () => {
   it("ensureUserKey returns key from fast path", async () => {
@@ -72,6 +78,38 @@ describe("generator", () => {
     gen.invalidateKey();
     const key2 = await gen.ensureUserKey(BASE_URL);
     assert.equal(key2, "new-key-67890");
+  });
+
+  it("uses the text generator verifier for text API keys", async () => {
+    let responseHandler: ((response: BrowserResponse) => void) | undefined;
+    const verifierPage = createMockPage("");
+    verifierPage.on = mock.fn((_event, handler) => {
+      responseHandler = handler;
+    });
+    verifierPage.goto = mock.fn(async () => {
+      responseHandler?.({
+        url: () => `${TEXT_BASE_URL}/verifyUser?token=test-token`,
+        text: async () => KEY_RESPONSE,
+      });
+    });
+    verifierPage.frames = mock.fn(() => [{
+      url: () =>
+        "https://example.perchance.org/ai-text-to-image-generator",
+      evaluate: mock.fn(async () => undefined),
+    } as BrowserFrame]);
+    const ctx = createMockContext([
+      createMockPage(NO_KEY_RESPONSE),
+      verifierPage,
+    ]);
+    const gen = new TestGenerator();
+    gen.setBrowserContext(ctx);
+
+    assert.equal(await gen.ensureUserKey(TEXT_BASE_URL), "test-key-12345");
+    assert.equal(
+      (verifierPage.goto as unknown as ReturnType<typeof mock.fn>)
+        .mock.calls[0].arguments[0],
+      "https://perchance.org/ai-text-generator",
+    );
   });
 
   it("throws AuthenticationError when no key found and no browser", async () => {
