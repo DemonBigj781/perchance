@@ -181,6 +181,11 @@ CAMOUFOX_VERSION=152.0.4
 CAMOUFOX_RELEASE=beta.28
 ```
 
+The AppImage type 2 runtime must also be downloaded into the build cache and
+verified against this SHA-256 digest:
+
+`1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf`
+
 Require `curl`, `sha256sum`, `tar`, `npm`, `ldd`, `find`, and
 `appimagetool`. Reject non-x86_64 hosts. Resolve Camoufox from
 `${CAMOUFOX_INSTALL_DIR:-$HOME/.cache/camoufox}`.
@@ -212,7 +217,8 @@ Invoke appimagetool with:
 
 ```sh
 ARCH=x86_64 SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
-  "$APPIMAGETOOL" --no-appstream --comp zstd "$APPDIR" "$OUTPUT"
+  "$APPIMAGETOOL" --no-appstream --comp zstd \
+  --runtime-file "$RUNTIME_FILE" "$APPDIR" "$OUTPUT"
 ```
 
 Write `release/Perchance-1.0.0-x86_64.AppImage.sha256` with `sha256sum`.

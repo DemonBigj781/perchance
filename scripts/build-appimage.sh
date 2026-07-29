@@ -9,6 +9,8 @@ NODE_VERSION=24.18.1
 NODE_ARCHIVE="node-v${NODE_VERSION}-linux-x64.tar.xz"
 NODE_DIRECTORY="node-v${NODE_VERSION}-linux-x64"
 NODE_SHA256=d6c664df3f3f61458e8c277585571328522d705166723a7c7823a9253a4d15a0
+APPIMAGE_RUNTIME=runtime-x86_64
+APPIMAGE_RUNTIME_SHA256=1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf
 CAMOUFOX_VERSION=152.0.4
 CAMOUFOX_RELEASE=beta.28
 
@@ -17,6 +19,7 @@ CACHE_DIR="$BUILD_ROOT/cache"
 STAGING_DIR="$BUILD_ROOT/staging"
 APPDIR="$STAGING_DIR/Perchance.AppDir"
 NODE_DOWNLOAD="$CACHE_DIR/$NODE_ARCHIVE"
+RUNTIME_DOWNLOAD="$CACHE_DIR/$APPIMAGE_RUNTIME"
 CAMOUFOX_SOURCE=${CAMOUFOX_INSTALL_DIR:-"$HOME/.cache/camoufox"}
 RELEASE_DIR="$ROOT/release"
 
@@ -112,6 +115,17 @@ fi
 
 printf '%s  %s\n' "$NODE_SHA256" "$NODE_DOWNLOAD" | sha256sum -c -
 
+if [ ! -f "$RUNTIME_DOWNLOAD" ]; then
+  printf 'Downloading the AppImage type 2 runtime...\n'
+  curl -fL \
+    "https://github.com/AppImage/type2-runtime/releases/download/continuous/$APPIMAGE_RUNTIME" \
+    -o "$RUNTIME_DOWNLOAD.part"
+  mv "$RUNTIME_DOWNLOAD.part" "$RUNTIME_DOWNLOAD"
+fi
+
+printf '%s  %s\n' "$APPIMAGE_RUNTIME_SHA256" "$RUNTIME_DOWNLOAD" |
+  sha256sum -c -
+
 reset_staging
 NODE_EXTRACT="$STAGING_DIR/node"
 mkdir -p "$NODE_EXTRACT"
@@ -184,7 +198,8 @@ SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
 rm -f "$OUTPUT" "$CHECKSUM"
 printf 'Packaging %s...\n' "$OUTPUT_NAME"
 ARCH=x86_64 SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
-  "$APPIMAGETOOL_PATH" --no-appstream --comp zstd "$APPDIR" "$OUTPUT"
+  "$APPIMAGETOOL_PATH" --no-appstream --comp zstd \
+  --runtime-file "$RUNTIME_DOWNLOAD" "$APPDIR" "$OUTPUT"
 chmod 755 "$OUTPUT"
 (
   cd "$RELEASE_DIR"

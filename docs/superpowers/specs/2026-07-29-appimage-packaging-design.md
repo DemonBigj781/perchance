@@ -37,6 +37,11 @@ service and verified against the pinned SHA-256 digest:
 
 `d6c664df3f3f61458e8c277585571328522d705166723a7c7823a9253a4d15a0`
 
+The AppImage type 2 runtime is also cached and verified against its pinned
+SHA-256 digest before it is passed to `appimagetool`:
+
+`1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf`
+
 The build fails if the Camoufox installation is missing, incomplete, reports a
 different version, or has unresolved ELF dependencies on the build host.
 
