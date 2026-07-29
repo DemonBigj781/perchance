@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Perchance CLI
+Comment=Generate images and text through Perchance
+Exec=perchance
+Icon=perchance
+Terminal=true
+Categories=Utility;Network;

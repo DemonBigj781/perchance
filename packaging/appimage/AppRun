@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+if [ -z "${APPDIR:-}" ]; then
+  APPDIR=$(dirname "$0")
+fi
+export CAMOUFOX_INSTALL_DIR="$APPDIR/usr/lib/camoufox"
+export PERCHANCE_APPIMAGE=1
+export PATH="$APPDIR/usr/bin:${PATH:-/usr/bin:/bin}"
+
+if [ "$#" -eq 0 ]; then
+  set -- --help
+fi
+
+exec "$APPDIR/usr/bin/node" \
+  "$APPDIR/usr/lib/perchance/dist/src/cli.js" "$@"
