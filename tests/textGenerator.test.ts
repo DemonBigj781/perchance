@@ -54,8 +54,10 @@ describe("textGenerator", () => {
       async evaluate(_fn: unknown, request?: { url: string }) {
         events.push("evaluate");
         streamRequest = request;
-        await callbacks.get("__perchanceOnChunk")?.('t:"hello"\ndata:done');
+        await callbacks.get("__perchanceOnChunk")?.("data:done");
         await callbacks.get("__perchanceOnDone")?.();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        events.push("fetch-resolved");
       },
       frames() {
         return [];
@@ -65,7 +67,9 @@ describe("textGenerator", () => {
       },
       on() {},
       async waitForTimeout() {},
-      async close() {},
+      async close() {
+        events.push("close");
+      },
       async exposeFunction(
         name: string,
         callback: (...args: unknown[]) => unknown,
@@ -82,12 +86,20 @@ describe("textGenerator", () => {
     const generator = new FixedKeyTextGenerator();
     generator.setBrowserContext(context);
 
-    assert.equal(await generator.text("hello"), "hello");
+    assert.equal(await generator.text("hello"), "");
     assert.match(
       events[0] ?? "",
       /^goto:https:\/\/text-generation\.perchance\.org\/api\/verifyUser\?/,
     );
     assert.equal(events[1], "evaluate");
     assert.match(streamRequest?.url ?? "", /[?&]thread=0(?:&|$)/);
+    const fetchResolvedIndex = events.indexOf("fetch-resolved");
+    const closeIndex = events.indexOf("close");
+    assert.notEqual(fetchResolvedIndex, -1);
+    assert.notEqual(closeIndex, -1);
+    assert.ok(
+      fetchResolvedIndex < closeIndex,
+      "the browser fetch must settle before its page is closed",
+    );
   });
 });

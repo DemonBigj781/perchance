@@ -67,6 +67,7 @@ export class TextGenerator extends Generator {
       // We collect chunks via an exposed callback that the page JS calls.
       const chunks: string[] = [];
       let done = false;
+      let streamComplete = false;
       let error: string | null = null;
 
       // Expose a function for the page to call with each chunk
@@ -118,7 +119,9 @@ export class TextGenerator extends Generator {
             if (line.startsWith("t:")) {
               yield JSON.parse(line.slice(2));
             } else if (line.startsWith("data:")) {
-              return;
+              streamComplete = true;
+              done = true;
+              break;
             }
           }
         } else {
@@ -131,13 +134,14 @@ export class TextGenerator extends Generator {
       }
 
       // Drain remaining chunks
-      while (chunks.length > 0) {
+      while (chunks.length > 0 && !streamComplete) {
         const raw = chunks.shift()!;
         for (const line of raw.split("\n")) {
           if (line.startsWith("t:")) {
             yield JSON.parse(line.slice(2));
           } else if (line.startsWith("data:")) {
-            return;
+            streamComplete = true;
+            break;
           }
         }
       }
