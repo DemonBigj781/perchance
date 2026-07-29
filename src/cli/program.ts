@@ -239,7 +239,18 @@ function addImageCommand(
     });
 }
 
-function addTextCommand(program: Command): void {
+interface TextCommandOptions extends OptionValues {
+  startWith?: string;
+  stop: string[];
+  timeout?: number;
+  json?: boolean;
+  visible?: boolean;
+}
+
+function addTextCommand(
+  program: Command,
+  dependencies: CliDependencies,
+): void {
   program
     .command("text")
     .description("Generate text")
@@ -249,8 +260,40 @@ function addTextCommand(program: Command): void {
     .option("--timeout <milliseconds>", "per-chunk timeout", parsePositiveInteger)
     .option("--json", "print structured JSON")
     .option("--visible", "show the Camoufox window")
-    .action(async (_prompt: string, _options: OptionValues) => {
-      throw new Error("Text command is not implemented yet.");
+    .action(async (prompt: string, options: TextCommandOptions) => {
+      const context = await dependencies.launchBrowser({
+        headless: !options.visible,
+      });
+
+      try {
+        const generator = dependencies.createTextGenerator();
+        generator.setBrowserContext(context);
+
+        const generationOptions: GenerateTextOptions = {
+          stopSequences: options.stop,
+        };
+        if (options.startWith !== undefined) {
+          generationOptions.startWith = options.startWith;
+        }
+        if (options.timeout !== undefined) {
+          generationOptions.timeoutMs = options.timeout;
+        }
+
+        const chunks: string[] = [];
+        for await (const chunk of generator.stream(prompt, generationOptions)) {
+          if (options.json) {
+            chunks.push(chunk);
+          } else {
+            dependencies.stdout(chunk);
+          }
+        }
+
+        if (options.json) {
+          dependencies.stdout(`${JSON.stringify({ text: chunks.join("") })}\n`);
+        }
+      } finally {
+        await context.close();
+      }
     });
 }
 
@@ -284,7 +327,7 @@ export async function runCli(
     });
 
   addImageCommand(program, dependencies);
-  addTextCommand(program);
+  addTextCommand(program, dependencies);
   addBrowserCommand(program);
 
   try {

@@ -3,7 +3,10 @@ import { describe, it } from "node:test";
 
 import type { BrowserContext } from "../src/generator.js";
 import { runCli, type CliDependencies } from "../src/cli/program.js";
-import type { GenerateImageOptions } from "../src/types.js";
+import type {
+  GenerateImageOptions,
+  GenerateTextOptions,
+} from "../src/types.js";
 
 interface FakeState {
   stdout: string;
@@ -15,6 +18,9 @@ interface FakeState {
   mkdirPaths: string[];
   existingDirectories: Set<string>;
   imageError?: Error;
+  textCalls: Array<{ prompt: string; options: GenerateTextOptions }>;
+  textChunks: string[];
+  textError?: Error;
 }
 
 function createFakeDependencies(): CliDependencies & { state: FakeState } {
@@ -27,6 +33,8 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
     savedPaths: [],
     mkdirPaths: [],
     existingDirectories: new Set(),
+    textCalls: [],
+    textChunks: [],
   };
   const browser: BrowserContext = {
     async newPage() {
@@ -71,7 +79,14 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
       };
     },
     createTextGenerator() {
-      throw new Error("unused fake text generator");
+      return {
+        setBrowserContext() {},
+        async *stream(prompt, options) {
+          state.textCalls.push({ prompt, options });
+          if (state.textError) throw state.textError;
+          for (const chunk of state.textChunks) yield chunk;
+        },
+      };
     },
     async runBrowserCommand() {
       throw new Error("unused fake browser command");
@@ -261,5 +276,94 @@ describe("image command", () => {
     assert.equal(status, 1);
     assert.equal(dependencies.state.browserCloseCalls, 1);
     assert.equal(dependencies.state.stderr, "Error: generation failed\n");
+  });
+});
+
+describe("text command", () => {
+  it("streams generated text without adding a newline", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.textChunks = ["hello", " world"];
+
+    const status = await runCli(
+      ["node", "perchance", "text", "greet me"],
+      dependencies,
+    );
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.launchCalls, [{ headless: true }]);
+    assert.deepEqual(dependencies.state.textCalls, [{
+      prompt: "greet me",
+      options: { stopSequences: [] },
+    }]);
+    assert.equal(dependencies.state.stdout, "hello world");
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+  });
+
+  it("passes text options and returns JSON from a visible browser", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.textChunks = ["first", " second"];
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "text",
+      "continue this",
+      "--start-with",
+      "Once",
+      "--stop",
+      ".",
+      "--stop",
+      "!",
+      "--timeout",
+      "12000",
+      "--visible",
+      "--json",
+    ], dependencies);
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.launchCalls, [{ headless: false }]);
+    assert.deepEqual(dependencies.state.textCalls, [{
+      prompt: "continue this",
+      options: {
+        startWith: "Once",
+        stopSequences: [".", "!"],
+        timeoutMs: 12000,
+      },
+    }]);
+    assert.deepEqual(JSON.parse(dependencies.state.stdout), {
+      text: "first second",
+    });
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+  });
+
+  it("rejects a non-positive timeout before launching a browser", async () => {
+    const dependencies = createFakeDependencies();
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "text",
+      "hello",
+      "--timeout",
+      "0",
+    ], dependencies);
+
+    assert.equal(status, 1);
+    assert.equal(dependencies.state.launchCalls.length, 0);
+    assert.match(dependencies.state.stderr, /positive integer/);
+  });
+
+  it("reports stream failures and still closes the browser", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.textError = new Error("stream failed");
+
+    const status = await runCli(
+      ["node", "perchance", "text", "break"],
+      dependencies,
+    );
+
+    assert.equal(status, 1);
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+    assert.equal(dependencies.state.stderr, "Error: stream failed\n");
   });
 });
