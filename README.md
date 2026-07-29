@@ -37,15 +37,64 @@ Replaced Playwright Chromium with **Camoufox-JS**, a patched Firefox fork for an
 
 ```bash
 npm install
+npm run build
+./node_modules/.bin/camoufox-js fetch
 ```
 
-This will install `camoufox-js` and `playwright-core` along with other dependencies. `camoufox-js` will automatically download the necessary browser binary on first run.
+This installs the Node.js dependencies, compiles the TypeScript sources, and
+downloads the Camoufox browser into the per-user cache.
+
+## Command-Line Interface
+
+Install the command for the current user from this checkout:
+
+```bash
+npm install --global .
+```
+
+The CLI runs Camoufox headlessly by default. Add `--visible` to an image or
+text command when you need to inspect the browser window.
+
+Generate an image with default settings:
+
+```bash
+perchance image "a red fox in a snowy forest"
+```
+
+The default output is `generated_images/<image-id>.<extension>` beneath the
+current directory. Use an exact filename or an output directory:
+
+```bash
+perchance image "a red fox" --shape landscape --output ./fox.png
+perchance image "a red fox" --output ./generated_images/
+```
+
+Additional image options include `--negative-prompt`, `--seed`,
+`--guidance-scale`, and `--json`.
+
+Stream generated text directly to stdout:
+
+```bash
+perchance text "Write a short greeting"
+```
+
+Text output can be redirected or piped without CLI status text being mixed
+into stdout. Use `--json` for `{ "text": "..." }` output. Other text options
+include `--start-with`, repeatable `--stop`, and `--timeout`.
+
+Manage the Camoufox installation used by the CLI:
+
+```bash
+perchance browser fetch
+perchance browser path
+perchance browser version
+```
 
 ## Usage (TypeScript API)
 
 ```typescript
-import { ImageGenerator } from "perchance"; // Or from "./dist/index.js" if local
-import { launchCamoufox } from "perchance/camoufox"; // Or from "./dist/camoufox.js"
+import { ImageGenerator } from "perchance"; // Or from "./dist/src/index.js" if local
+import { launchCamoufox } from "perchance/camoufox"; // Or from "./dist/src/camoufox.js"
 
 async function main() {
     const generator = new ImageGenerator();
@@ -100,7 +149,7 @@ These tests can take 30-90 seconds each due to browser automation and Cloudflare
 
 ## Compatibility
 
--   Node.js 20+
+-   Node.js 22+
 -   Linux x86_64 (Camoufox-JS binary availability)
 
 ## License

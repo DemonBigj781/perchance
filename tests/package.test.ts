@@ -44,11 +44,18 @@ describe("package", () => {
   it("declares the perchance executable", async () => {
     const packageJson = JSON.parse(
       await readFile(resolve(projectRoot, "package.json"), "utf8"),
-    ) as { bin?: Record<string, string>; engines?: { node?: string } };
+    ) as {
+      bin?: Record<string, string>;
+      engines?: { node?: string };
+      files?: string[];
+      scripts?: Record<string, string>;
+    };
     const executable = packageJson.bin?.perchance;
 
     assert.equal(executable, "dist/src/cli.js");
     assert.equal(packageJson.engines?.node, ">=22");
+    assert.deepEqual(packageJson.files, ["dist/src"]);
+    assert.equal(packageJson.scripts?.prepack, "npm run build");
     assert.ok(executable);
     await access(resolve(projectRoot, executable));
   });
