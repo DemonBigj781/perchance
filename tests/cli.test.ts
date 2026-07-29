@@ -3,11 +3,18 @@ import { describe, it } from "node:test";
 
 import type { BrowserContext } from "../src/generator.js";
 import { runCli, type CliDependencies } from "../src/cli/program.js";
+import type { GenerateImageOptions } from "../src/types.js";
 
 interface FakeState {
   stdout: string;
   stderr: string;
   launchCalls: Array<{ headless: boolean }>;
+  browserCloseCalls: number;
+  imageCalls: Array<{ prompt: string; options: GenerateImageOptions }>;
+  savedPaths: string[];
+  mkdirPaths: string[];
+  existingDirectories: Set<string>;
+  imageError?: Error;
 }
 
 function createFakeDependencies(): CliDependencies & { state: FakeState } {
@@ -15,12 +22,19 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
     stdout: "",
     stderr: "",
     launchCalls: [],
+    browserCloseCalls: 0,
+    imageCalls: [],
+    savedPaths: [],
+    mkdirPaths: [],
+    existingDirectories: new Set(),
   };
   const browser: BrowserContext = {
     async newPage() {
       throw new Error("unused fake page");
     },
-    async close() {},
+    async close() {
+      state.browserCloseCalls += 1;
+    },
   };
 
   return {
@@ -30,7 +44,31 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
       return browser;
     },
     createImageGenerator() {
-      throw new Error("unused fake image generator");
+      return {
+        setBrowserContext() {},
+        async image(prompt, options) {
+          state.imageCalls.push({ prompt, options });
+          if (state.imageError) throw state.imageError;
+          return {
+            imageId: "image-1",
+            fileExtension: "png",
+            seed: 42,
+            prompt,
+            width: 768,
+            height: 768,
+            guidanceScale: options.guidanceScale ?? 7,
+            negativePrompt: options.negativePrompt ?? "",
+            maybeNsfw: false,
+            toString() {
+              return "image-1.png";
+            },
+            async save(path) {
+              state.savedPaths.push(path);
+              return path;
+            },
+          };
+        },
+      };
     },
     createTextGenerator() {
       throw new Error("unused fake text generator");
@@ -47,13 +85,15 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
     cwd() {
       return "/work";
     },
-    async pathExists() {
-      return false;
+    async pathExists(path) {
+      return state.existingDirectories.has(path);
     },
-    async isDirectory() {
-      return false;
+    async isDirectory(path) {
+      return state.existingDirectories.has(path);
     },
-    async mkdir() {},
+    async mkdir(path) {
+      state.mkdirPaths.push(path);
+    },
     onSignal() {
       return () => {};
     },
@@ -112,5 +152,114 @@ describe("CLI parsing", () => {
     assert.equal(status, 1);
     assert.equal(dependencies.state.launchCalls.length, 0);
     assert.match(dependencies.state.stderr, /missing required argument/);
+  });
+});
+
+describe("image command", () => {
+  it("generates with defaults, saves the image, and closes the browser", async () => {
+    const dependencies = createFakeDependencies();
+
+    const status = await runCli(
+      ["node", "perchance", "image", "a red fox"],
+      dependencies,
+    );
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.launchCalls, [{ headless: true }]);
+    assert.deepEqual(dependencies.state.imageCalls, [{
+      prompt: "a red fox",
+      options: { shape: "square", seed: -1, guidanceScale: 7 },
+    }]);
+    assert.deepEqual(dependencies.state.mkdirPaths, ["/work/generated_images"]);
+    assert.deepEqual(dependencies.state.savedPaths, [
+      "/work/generated_images/image-1.png",
+    ]);
+    assert.equal(
+      dependencies.state.stdout,
+      "/work/generated_images/image-1.png\n",
+    );
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+  });
+
+  it("passes image options and treats an output filename exactly", async () => {
+    const dependencies = createFakeDependencies();
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "image",
+      "a blue fox",
+      "--shape",
+      "landscape",
+      "--negative-prompt",
+      "blur",
+      "--seed",
+      "12",
+      "--guidance-scale",
+      "8.5",
+      "--output",
+      "/work/output/fox.png",
+      "--visible",
+    ], dependencies);
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.launchCalls, [{ headless: false }]);
+    assert.deepEqual(dependencies.state.imageCalls[0], {
+      prompt: "a blue fox",
+      options: {
+        shape: "landscape",
+        negativePrompt: "blur",
+        seed: 12,
+        guidanceScale: 8.5,
+      },
+    });
+    assert.deepEqual(dependencies.state.mkdirPaths, ["/work/output"]);
+    assert.deepEqual(dependencies.state.savedPaths, ["/work/output/fox.png"]);
+  });
+
+  it("appends the generated name to an output directory and prints JSON", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.existingDirectories.add("/work/pictures");
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "image",
+      "a green fox",
+      "--output",
+      "/work/pictures",
+      "--json",
+    ], dependencies);
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.savedPaths, [
+      "/work/pictures/image-1.png",
+    ]);
+    assert.deepEqual(JSON.parse(dependencies.state.stdout), {
+      path: "/work/pictures/image-1.png",
+      imageId: "image-1",
+      fileExtension: "png",
+      seed: 42,
+      prompt: "a green fox",
+      width: 768,
+      height: 768,
+      guidanceScale: 7,
+      negativePrompt: "",
+      maybeNsfw: false,
+    });
+  });
+
+  it("reports generation failures and still closes the browser", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.imageError = new Error("generation failed");
+
+    const status = await runCli(
+      ["node", "perchance", "image", "a broken fox"],
+      dependencies,
+    );
+
+    assert.equal(status, 1);
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+    assert.equal(dependencies.state.stderr, "Error: generation failed\n");
   });
 });

@@ -1,4 +1,5 @@
 import { access, mkdir, stat } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import {
   Command,
@@ -136,7 +137,49 @@ const productionDependencies: CliDependencies = {
   },
 };
 
-function addImageCommand(program: Command): void {
+interface ImageCommandOptions extends OptionValues {
+  output?: string;
+  shape: ImageShape;
+  negativePrompt?: string;
+  seed: number;
+  guidanceScale: number;
+  json?: boolean;
+  visible?: boolean;
+}
+
+function absolutePath(path: string, dependencies: CliDependencies): string {
+  return isAbsolute(path) ? path : resolve(dependencies.cwd(), path);
+}
+
+export async function resolveImageOutput(
+  requested: string | undefined,
+  generatedName: string,
+  dependencies: CliDependencies,
+): Promise<string> {
+  if (!requested) {
+    const directory = join(dependencies.cwd(), "generated_images");
+    await dependencies.mkdir(directory);
+    return join(directory, generatedName);
+  }
+
+  const destination = absolutePath(requested, dependencies);
+  const endsWithSeparator = /[\\/]$/.test(requested);
+  const exists = await dependencies.pathExists(destination);
+  const isDirectory = exists && await dependencies.isDirectory(destination);
+
+  if (endsWithSeparator || isDirectory) {
+    await dependencies.mkdir(destination);
+    return join(destination, generatedName);
+  }
+
+  await dependencies.mkdir(dirname(destination));
+  return destination;
+}
+
+function addImageCommand(
+  program: Command,
+  dependencies: CliDependencies,
+): void {
   program
     .command("image")
     .description("Generate and save an image")
@@ -148,8 +191,51 @@ function addImageCommand(program: Command): void {
     .option("--guidance-scale <number>", "guidance scale", parseFiniteNumber, 7)
     .option("--json", "print structured JSON")
     .option("--visible", "show the Camoufox window")
-    .action(async (_prompt: string, _options: OptionValues) => {
-      throw new Error("Image command is not implemented yet.");
+    .action(async (prompt: string, options: ImageCommandOptions) => {
+      const context = await dependencies.launchBrowser({
+        headless: !options.visible,
+      });
+
+      try {
+        const generator = dependencies.createImageGenerator();
+        generator.setBrowserContext(context);
+
+        const generationOptions: GenerateImageOptions = {
+          shape: options.shape,
+          seed: options.seed,
+          guidanceScale: options.guidanceScale,
+        };
+        if (options.negativePrompt !== undefined) {
+          generationOptions.negativePrompt = options.negativePrompt;
+        }
+
+        const result = await generator.image(prompt, generationOptions);
+        const output = await resolveImageOutput(
+          options.output,
+          result.toString(),
+          dependencies,
+        );
+        const savedPath = await result.save(output);
+
+        if (options.json) {
+          dependencies.stdout(`${JSON.stringify({
+            path: savedPath,
+            imageId: result.imageId,
+            fileExtension: result.fileExtension,
+            seed: result.seed,
+            prompt: result.prompt,
+            width: result.width,
+            height: result.height,
+            guidanceScale: result.guidanceScale,
+            negativePrompt: result.negativePrompt,
+            maybeNsfw: result.maybeNsfw,
+          })}\n`);
+        } else {
+          dependencies.stdout(`${savedPath}\n`);
+        }
+      } finally {
+        await context.close();
+      }
     });
 }
 
@@ -197,7 +283,7 @@ export async function runCli(
       writeErr: dependencies.stderr,
     });
 
-  addImageCommand(program);
+  addImageCommand(program, dependencies);
   addTextCommand(program);
   addBrowserCommand(program);
 
