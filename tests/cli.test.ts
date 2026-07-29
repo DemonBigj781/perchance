@@ -21,6 +21,8 @@ interface FakeState {
   textCalls: Array<{ prompt: string; options: GenerateTextOptions }>;
   textChunks: string[];
   textError?: Error;
+  browserCommands: string[][];
+  browserCommandStatus: number;
 }
 
 function createFakeDependencies(): CliDependencies & { state: FakeState } {
@@ -35,6 +37,8 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
     existingDirectories: new Set(),
     textCalls: [],
     textChunks: [],
+    browserCommands: [],
+    browserCommandStatus: 0,
   };
   const browser: BrowserContext = {
     async newPage() {
@@ -88,8 +92,9 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
         },
       };
     },
-    async runBrowserCommand() {
-      throw new Error("unused fake browser command");
+    async runBrowserCommand(args) {
+      state.browserCommands.push(args);
+      return state.browserCommandStatus;
     },
     stdout(text) {
       state.stdout += text;
@@ -365,5 +370,33 @@ describe("text command", () => {
     assert.equal(status, 1);
     assert.equal(dependencies.state.browserCloseCalls, 1);
     assert.equal(dependencies.state.stderr, "Error: stream failed\n");
+  });
+});
+
+describe("browser command", () => {
+  for (const subcommand of ["fetch", "path", "version"]) {
+    it(`forwards browser ${subcommand} to Camoufox`, async () => {
+      const dependencies = createFakeDependencies();
+
+      const status = await runCli(
+        ["node", "perchance", "browser", subcommand],
+        dependencies,
+      );
+
+      assert.equal(status, 0);
+      assert.deepEqual(dependencies.state.browserCommands, [[subcommand]]);
+    });
+  }
+
+  it("returns a nonzero Camoufox status", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.browserCommandStatus = 7;
+
+    const status = await runCli(
+      ["node", "perchance", "browser", "version"],
+      dependencies,
+    );
+
+    assert.equal(status, 7);
   });
 });

@@ -17,6 +17,7 @@ import type {
   GenerateTextOptions,
   ImageShape,
 } from "../types.js";
+import { runCamoufoxCommand } from "./browser.js";
 
 export interface ImageResultLike {
   readonly imageId: string;
@@ -111,9 +112,7 @@ const productionDependencies: CliDependencies = {
   launchBrowser: launchCamoufox,
   createImageGenerator: () => new ImageGenerator(),
   createTextGenerator: () => new TextGenerator(),
-  async runBrowserCommand() {
-    throw new Error("Browser management is not available yet.");
-  },
+  runBrowserCommand: runCamoufoxCommand,
   stdout: (text) => process.stdout.write(text),
   stderr: (text) => process.stderr.write(text),
   cwd: () => process.cwd(),
@@ -297,7 +296,11 @@ function addTextCommand(
     });
 }
 
-function addBrowserCommand(program: Command): void {
+function addBrowserCommand(
+  program: Command,
+  dependencies: CliDependencies,
+  setStatus: (status: number) => void,
+): void {
   const browser = program
     .command("browser")
     .description("Manage the Camoufox browser installation");
@@ -307,7 +310,7 @@ function addBrowserCommand(program: Command): void {
       .command(command)
       .description(`${command} Camoufox browser information`)
       .action(async () => {
-        throw new Error("Browser management is not implemented yet.");
+        setStatus(await dependencies.runBrowserCommand([command]));
       });
   }
 }
@@ -316,6 +319,7 @@ export async function runCli(
   argv: string[],
   dependencies: CliDependencies = productionDependencies,
 ): Promise<number> {
+  let status = 0;
   const program = new Command()
     .name("perchance")
     .description("Generate images and text through Perchance")
@@ -328,11 +332,13 @@ export async function runCli(
 
   addImageCommand(program, dependencies);
   addTextCommand(program, dependencies);
-  addBrowserCommand(program);
+  addBrowserCommand(program, dependencies, (nextStatus) => {
+    status = nextStatus;
+  });
 
   try {
     await program.parseAsync(argv);
-    return 0;
+    return status;
   } catch (error) {
     if (error instanceof CommanderError) {
       return error.code === "commander.helpDisplayed" ? 0 : 1;
