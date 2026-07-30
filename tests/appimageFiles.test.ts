@@ -5,6 +5,8 @@ import { describe, it } from "node:test";
 const appRunPath = "packaging/appimage/AppRun";
 const desktopPath = "packaging/appimage/perchance.desktop";
 const iconPath = "packaging/appimage/perchance.svg";
+const auditScriptPath = "scripts/audit-appimage-size.sh";
+const smokeScriptPath = "scripts/smoke-appimage.sh";
 
 describe("AppImage runtime files", () => {
   it("launches the bundled CLI with the embedded Camoufox runtime", async () => {
@@ -40,5 +42,23 @@ describe("AppImage runtime files", () => {
 
     assert.match(icon, /<svg\b/);
     assert.ok(icon.length > 100);
+  });
+
+  it("provides repeatable AppImage size and clean-runtime audits", async () => {
+    const auditScript = await readFile(auditScriptPath, "utf8");
+    const smokeScript = await readFile(smokeScriptPath, "utf8");
+    const auditMetadata = await stat(auditScriptPath);
+    const smokeMetadata = await stat(smokeScriptPath);
+
+    assert.notEqual(auditMetadata.mode & 0o111, 0);
+    assert.notEqual(smokeMetadata.mode & 0o111, 0);
+    assert.match(auditScript, /unsquashfs/);
+    assert.match(auditScript, /camoufox_fonts_macos/);
+    assert.match(auditScript, /python_bytecode/);
+    assert.match(smokeScript, /APPIMAGE_EXTRACT_AND_RUN/);
+    assert.match(smokeScript, /strace/);
+    assert.match(smokeScript, /usr\/lib\/camoufox\/camoufox/);
+    assert.match(smokeScript, /external Python runtime/);
+    assert.match(smokeScript, /Camoufox processes remain/);
   });
 });
