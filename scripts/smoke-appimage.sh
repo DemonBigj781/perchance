@@ -22,10 +22,13 @@ case "$APPIMAGE" in
 esac
 
 [ -x "$APPIMAGE" ] || fail "AppImage is missing: $APPIMAGE"
-for command_name in file pgrep strace timeout; do
+for command_name in file pgrep timeout; do
   command -v "$command_name" >/dev/null 2>&1 ||
     fail "required command not found: $command_name"
 done
+if [ "$MODE" = extract ]; then
+  command -v strace >/dev/null 2>&1 || fail "required command not found: strace"
+fi
 
 case "$RUN_ROOT" in
   "$ROOT"/build/appimage/smoke/latest) ;;
@@ -73,9 +76,13 @@ case "$MODE" in
     fi
     ;;
   direct)
-    if ! timeout "$TIMEOUT_SECONDS" strace -f -qq -s 4096 \
-      -e trace=execve -o "$TRACE" \
-      env -i HOME="$RUN_ROOT/home" PATH=/usr/bin:/bin \
+    PATH_OUTPUT=$(timeout "$TIMEOUT_SECONDS" env -i \
+      HOME="$RUN_ROOT/home" PATH=/usr/bin:/bin TMPDIR="$RUN_ROOT/tmp" \
+      "$APPIMAGE" browser path) || fail "direct AppImage browser path failed"
+    printf '%s\n' "$PATH_OUTPUT" | grep -F '/usr/lib/camoufox' >/dev/null ||
+      fail "direct mode did not resolve the embedded Camoufox runtime"
+    if ! timeout "$TIMEOUT_SECONDS" env -i \
+      HOME="$RUN_ROOT/home" PATH=/usr/bin:/bin \
       TMPDIR="$RUN_ROOT/tmp" \
       "$APPIMAGE" image "$PROMPT" --output "$OUTPUT" \
       >"$STDOUT" 2>"$STDERR"; then
@@ -99,20 +106,22 @@ sleep 3
 LEAKED=$(comm -13 "$BEFORE" "$AFTER")
 [ -z "$LEAKED" ] || fail "Camoufox processes remain after generation: $LEAKED"
 
-grep -E 'execve\("[^"]*/usr/bin/node"' "$TRACE" >/dev/null ||
-  fail "the embedded Node.js runtime was not executed"
-grep -E 'execve\("[^"]*/usr/lib/camoufox/camoufox-bin"' "$TRACE" >/dev/null ||
-  fail "the embedded Camoufox browser was not executed"
+if [ "$MODE" = extract ]; then
+  grep -E 'execve\("[^"]*/usr/bin/node"' "$TRACE" >/dev/null ||
+    fail "the embedded Node.js runtime was not executed"
+  grep -E 'execve\("[^"]*/usr/lib/camoufox/camoufox-bin"' "$TRACE" >/dev/null ||
+    fail "the embedded Camoufox browser was not executed"
 
-if grep -E 'execve\("(/usr)?/bin/(node|nodejs)"' "$TRACE" >/dev/null; then
-  fail "a system Node.js runtime was executed"
-fi
-if grep -E 'execve\("[^"]*/python([0-9.]*)?"' "$TRACE" >/dev/null; then
-  fail "an external Python runtime was executed"
-fi
-if grep -E 'execve\("(/usr)?/bin/(firefox|chromium|chrome|google-chrome)' \
-  "$TRACE" >/dev/null; then
-  fail "an external system browser was executed"
+  if grep -E 'execve\("(/usr)?/bin/(node|nodejs)"' "$TRACE" >/dev/null; then
+    fail "a system Node.js runtime was executed"
+  fi
+  if grep -E 'execve\("[^"]*/python([0-9.]*)?"' "$TRACE" >/dev/null; then
+    fail "an external Python runtime was executed"
+  fi
+  if grep -E 'execve\("(/usr)?/bin/(firefox|chromium|chrome|google-chrome)' \
+    "$TRACE" >/dev/null; then
+    fail "an external system browser was executed"
+  fi
 fi
 
 printf 'appimage=%s\n' "$APPIMAGE"
@@ -120,7 +129,13 @@ printf 'mode=%s\n' "$MODE"
 printf 'image=%s\n' "$OUTPUT"
 printf 'image_bytes=%s\n' "$(stat -c %s "$OUTPUT")"
 printf 'image_type=%s\n' "$IMAGE_TYPE"
+printf 'camoufox_processes_before=%s\n' "$(wc -l <"$BEFORE" | tr -d ' ')"
 printf 'camoufox_processes_after=%s\n' "$(wc -l <"$AFTER" | tr -d ' ')"
-printf 'trace=%s\n' "$TRACE"
+printf 'new_camoufox_processes_after=0\n'
+if [ "$MODE" = extract ]; then
+  printf 'trace=%s\n' "$TRACE"
+else
+  printf 'trace=not-used-fuse-and-ptrace-are-incompatible\n'
+fi
 rm -f "$OUTPUT"
 printf 'image_removed=true\n'

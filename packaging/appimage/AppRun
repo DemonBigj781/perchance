@@ -7,6 +7,7 @@ fi
 export CAMOUFOX_INSTALL_DIR="$APPDIR/usr/lib/camoufox"
 export PERCHANCE_APPIMAGE=1
 export PATH="$APPDIR/usr/bin:${PATH:-/usr/bin:/bin}"
+export LD_LIBRARY_PATH="$APPDIR/usr/lib/camoufox:$APPDIR/usr/lib/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 if [ "$#" -eq 0 ]; then
   set -- --help

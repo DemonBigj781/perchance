@@ -144,10 +144,11 @@ All current ELF dependencies resolve on the Bazzite build host. Camoufox
 retains its NSS/TLS, codec, SQLite, inference, sandbox, Wayland, GTK bridge,
 WebGL, audio, fontconfig, and X11 integration libraries.
 
-The AppImage still relies on the host Linux kernel, glibc ABI, graphics stack,
-and standard desktop libraries such as GTK 3, GLib, Pango, Cairo, X11, DBus,
-fontconfig, FreeType, and ALSA. This is the same portability boundary as the
-working baseline and will be tested in a clean compatible Linux container.
+The baseline relied on host GTK 3, GLib, Pango, Cairo, X11, DBus, fontconfig,
+FreeType, and ALSA libraries. That failed in the Debian validation environment
+when `libasound.so.2` was unavailable. The final AppImage now embeds the
+non-glibc native closure described below. It still relies on the host Linux
+kernel, glibc loader and ABI, graphics drivers, and optional display system.
 
 ## Planned Safe Reductions
 
@@ -289,3 +290,115 @@ it to the pinned official type 2 runtime, and normalizes all SquashFS ownership
 to root. The selected settings are xz, 1 MiB blocks and dictionary, and the x86
 BCJ filter. This increases release build time but leaves every application and
 browser byte unchanged.
+
+## Reduction 5: Debian Native Portability Closure
+
+The first clean Debian 13 validation correctly failed because the previous
+artifact depended on the host's `libasound.so.2`. Rather than weakening the
+browser or documenting a system-package prerequisite, the build now derives a
+native runtime closure in a pinned Debian Bookworm container.
+
+The persistent builder image is content-addressed by the Containerfile hash.
+Its base image digest, Debian repository snapshot (`20260730T090000Z`), and
+top-level package versions are pinned. The collector script is mounted read-only
+at runtime, so changing audit logic does not rebuild the dependency image. The
+collector runs `lddtree` against every ELF file in the staged AppDir, copies
+only non-glibc dependencies, and records package versions, licenses, SHA-256
+hashes, SONAMEs, and duplicate hashes.
+
+Final closure results:
+
+- 68 shared libraries totaling 32,986,296 bytes uncompressed.
+- 63 Debian package owners and corresponding copyright files.
+- Zero libraries with unknown package provenance.
+- Zero duplicate native-library hashes.
+- 68 matching filename/SONAME records.
+- No bundled glibc, dynamic loader, kernel interface, or GPU driver.
+- All native libraries were already stripped and contained zero debug sections;
+  no additional binary rewriting was necessary.
+
+The closure includes ALSA, GTK 3, GLib/GIO/GObject, ATK, Pango, Cairo, X11,
+XCB, Wayland client libraries, fontconfig, FreeType, HarfBuzz, DBus, image
+codecs, compression libraries, and the C++ runtime. `AppRun` prepends the
+Camoufox and native-library directories to `LD_LIBRARY_PATH` before launching
+the embedded Node.js executable.
+
+| Measurement | Before closure | Final | Increase |
+| --- | ---: | ---: | ---: |
+| Uncompressed AppDir | 1,490,907,401 | 1,524,795,248 | 33,887,847 |
+| Complete AppImage | 619,390,144 | 629,195,968 | 9,805,824 |
+
+The increase is intentional: it converts a host-library-dependent artifact
+into a self-contained user-space browser package while keeping the final image
+well below the original baseline.
+
+## Final Result
+
+| Measurement | Original | Final | Saved |
+| --- | ---: | ---: | ---: |
+| Uncompressed AppDir | 1,621,223,305 | 1,524,795,248 | 96,428,057 (5.95%) |
+| Complete AppImage | 742,050,296 | 629,195,968 | 112,854,328 (15.21%) |
+| AppImage runtime | 944,632 | 193,728 | 750,904 |
+| Compressed SquashFS | 741,105,611 | 629,002,016 | 112,103,595 |
+
+The final AppImage SHA-256 is
+`295b9cc7545179fc3b4ffc9d9d2485846bfebb49a0c0c3e9fa9ad3f9df027154`.
+
+All 1,257 Camoufox files are byte-for-byte identical to the working installed
+browser. Their sorted content manifest hash is
+`7126e62f92e4013bd89c8d318ff47eff9e0a32f92efbee7c62a0bf32cdf57400`.
+No browser archive, binary, addon, font, dictionary, locale, codec, TLS file,
+fingerprint database, GeoIP data, WebGL data, or rendering resource was changed
+in this phase.
+
+Final validation passed:
+
+- 56 unit and packaging tests.
+- ShellCheck, POSIX-shell formatting, and whitespace checks.
+- AppImage checksum, xz/1 MiB SquashFS structure, extracted CLI, immutable
+  browser behavior, native-library checksums, package provenance, SONAMEs,
+  package imports, SQLite, and WebGL sampling.
+- Host extraction-and-run image generation with `strace` provenance.
+- Host direct FUSE-mounted image generation.
+- Debian 13 Distrobox extraction-and-run image generation without system Node,
+  Firefox, Chromium, or Chrome.
+- Embedded Node.js and Camoufox execution confirmed in the Debian trace; no
+  external Python or browser executable was launched.
+- Every generated validation image was deleted, and no new Camoufox process
+  remained after any smoke test.
+- Live AppImage text generation wrote console output, terminated it with one
+  newline, produced no stderr, and left no new browser process.
+
+## Intentionally Retained Components
+
+The following large components remain because removing or changing them would
+risk generation, verification, portability, fingerprinting, or rendering:
+
+- All 975,849,336 bytes of Linux, macOS, and Windows Camoufox font trees,
+  including emoji, symbols, fallback fonts, spacing seeds, and fontconfig data.
+- `libxul.so`, both Mozilla `omni.ja` archives, dictionaries, hyphenation data,
+  browser developer resources, addons, and GeoIP data.
+- NSS/TLS, sandbox, audio, GTK/Wayland, codecs, image decoding, ONNX inference,
+  WebGL, canvas, SQLite, and fingerprint resources.
+- Playwright's Firefox protocol and runtime JavaScript, cookies, storage,
+  networking, TLS, JavaScript execution, browser contexts, and page APIs.
+- The glibc x86_64 Impit networking module and `better-sqlite3` WebGL database
+  runtime.
+- The complete Debian native user-space closure identified by ELF dependency
+  analysis.
+
+UPX was not used. Applying it globally would add decompression and compatibility
+risk, and Camoufox/Firefox binaries were deliberately excluded from binary
+rewriting in this phase. Browser core archive pruning was also rejected: the
+approximately 20.5 MB of developer resources is small after xz compression and
+modifying signed or tightly coupled Mozilla resources is not justified without
+a source-built browser and full regression validation.
+
+## Portability Boundary
+
+The artifact is portable across tested glibc-based x86_64 Linux environments,
+including the Bazzite/Fedora-family build host and Debian 13. It is not a
+Windows executable, an ARM64 build, or a musl-native package. It cannot bundle
+the host kernel, glibc loader, GPU kernel driver, or display server. Software
+rendering and headless browser rendering remain available through Camoufox;
+hardware acceleration depends on compatible host graphics drivers.

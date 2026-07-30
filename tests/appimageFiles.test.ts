@@ -20,6 +20,11 @@ const desktopPath = "packaging/appimage/perchance.desktop";
 const iconPath = "packaging/appimage/perchance.svg";
 const auditScriptPath = "scripts/audit-appimage-size.sh";
 const buildScriptPath = "scripts/build-appimage.sh";
+const debianVerifyScriptPath = "scripts/verify-appimage-debian.sh";
+const nativeCollectorPath = "scripts/collect-appimage-native-libs.sh";
+const nativeContainerPath = "packaging/appimage/native-libs.Containerfile";
+const nativeContainerCollectorPath =
+  "packaging/appimage/collect-native-libs.sh";
 const smokeScriptPath = "scripts/smoke-appimage.sh";
 const pruneScriptPath = "scripts/prune-appimage-runtime.sh";
 const execFileAsync = promisify(execFile);
@@ -45,6 +50,8 @@ describe("AppImage runtime files", () => {
       /CAMOUFOX_INSTALL_DIR="\$APPDIR\/usr\/lib\/camoufox"/,
     );
     assert.match(appRun, /PERCHANCE_APPIMAGE=1/);
+    assert.match(appRun, /usr\/lib\/native/);
+    assert.match(appRun, /LD_LIBRARY_PATH/);
     assert.match(appRun, /if \[ "\$#" -eq 0 \]; then/);
     assert.match(appRun, /set -- --help/);
     assert.match(appRun, /"\$APPDIR\/usr\/bin\/node"/);
@@ -87,6 +94,18 @@ describe("AppImage runtime files", () => {
     assert.match(smokeScript, /external Python runtime/);
     assert.match(smokeScript, /Camoufox processes remain/);
     assert.match(smokeScript, /image_removed=true/);
+  });
+
+  it("provides repeatable Debian container verification", async () => {
+    const script = await readFile(debianVerifyScriptPath, "utf8");
+    const metadata = await stat(debianVerifyScriptPath);
+
+    assert.notEqual(metadata.mode & 0o111, 0);
+    assert.match(script, /podman container exists/);
+    assert.match(script, /ID.*debian/);
+    assert.match(script, /external_runtime/);
+    assert.match(script, /APPIMAGE_SMOKE_MODE=extract/);
+    assert.match(script, /scripts\/smoke-appimage\.sh/);
   });
 
   it("prunes build-only payload while retaining runtime assets", async () => {
@@ -230,5 +249,35 @@ describe("AppImage runtime files", () => {
     assert.match(buildScript, /-Xbcj x86/);
     assert.match(buildScript, /-all-root/);
     assert.match(buildScript, /AppImageKit\/releases\/download\/continuous/);
+  });
+
+  it("bundles a Debian-compatible native library closure", async () => {
+    const buildScript = await readFile(buildScriptPath, "utf8");
+    const collector = await readFile(nativeCollectorPath, "utf8");
+    const container = await readFile(nativeContainerPath, "utf8");
+    const containerCollector = await readFile(
+      nativeContainerCollectorPath,
+      "utf8",
+    );
+    const metadata = await stat(nativeCollectorPath);
+
+    assert.notEqual(metadata.mode & 0o111, 0);
+    assert.match(buildScript, /collect-appimage-native-libs\.sh/);
+    assert.match(collector, /podman image exists/);
+    assert.match(collector, /IMAGE_KEY/);
+    assert.match(collector, /collect-native-libs:ro/);
+    assert.match(container, /debian:bookworm-slim@sha256:/);
+    assert.match(container, /DEBIAN_SNAPSHOT=20260730T090000Z/);
+    assert.match(container, /snapshot\.debian\.org/);
+    assert.match(container, /file=1:5\.44-3/);
+    assert.match(container, /libasound2/);
+    assert.match(container, /libgtk-3-0/);
+    assert.match(containerCollector, /lddtree/);
+    assert.match(containerCollector, /libc\.so\.6/);
+    assert.match(containerCollector, /packages\.tsv/);
+    assert.match(containerCollector, /sonames\.tsv/);
+    assert.match(containerCollector, /duplicate-hashes\.tsv/);
+    assert.match(containerCollector, /readelf/);
+    assert.match(containerCollector, /licenses/);
   });
 });

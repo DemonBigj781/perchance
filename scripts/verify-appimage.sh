@@ -61,6 +61,14 @@ EXTRACTED="$VERIFY_ROOT/squashfs-root"
   fail "embedded Camoufox executable is missing"
 [ -f "$EXTRACTED/usr/lib/camoufox/version.json" ] ||
   fail "embedded Camoufox version metadata is missing"
+[ -f "$EXTRACTED/usr/lib/native/libasound.so.2" ] ||
+  fail "embedded native audio library is missing"
+[ -f "$EXTRACTED/usr/share/perchance/native-libs/packages.tsv" ] ||
+  fail "native dependency package manifest is missing"
+[ -f "$EXTRACTED/usr/share/perchance/native-libs/sonames.tsv" ] ||
+  fail "native SONAME manifest is missing"
+[ -f "$EXTRACTED/usr/share/perchance/native-libs/duplicate-hashes.tsv" ] ||
+  fail "native duplicate manifest is missing"
 [ -f "$EXTRACTED/usr/lib/perchance/node_modules/better-sqlite3/prebuilds/linux-x64.node" ] ||
   fail "better-sqlite3 Linux x86_64 runtime is missing"
 [ ! -d "$EXTRACTED/usr/lib/perchance/node_modules/node-addon-api" ] ||
@@ -78,6 +86,19 @@ EXTRACTED="$VERIFY_ROOT/squashfs-root"
   fail "embedded Camoufox fonts are missing"
 [ -n "$(find "$EXTRACTED/usr/lib/camoufox/addons" -type f -print -quit)" ] ||
   fail "embedded Camoufox addons are missing"
+
+NATIVE_METADATA="$EXTRACTED/usr/share/perchance/native-libs"
+if awk -F '\t' 'NR > 1 && $3 == "unknown" { found = 1 } END { exit !found }' \
+  "$NATIVE_METADATA/packages.tsv"; then
+  fail "native dependency package manifest contains unknown packages"
+fi
+if [ "$(wc -l <"$NATIVE_METADATA/duplicate-hashes.tsv" | tr -d ' ')" -ne 1 ]; then
+  fail "duplicate native libraries remain in the AppImage"
+fi
+(
+  cd "$EXTRACTED/usr/lib/native"
+  sha256sum -c "$NATIVE_METADATA/libraries.sha256"
+)
 
 PATH_OUTPUT=$(APPDIR="$EXTRACTED" "$EXTRACTED/AppRun" browser path)
 printf '%s\n' "$PATH_OUTPUT" | grep -F '/usr/lib/camoufox' >/dev/null ||

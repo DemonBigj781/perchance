@@ -101,9 +101,11 @@ npm run appimage
 ```
 
 The builder expects Camoufox `v152.0.4-beta.28` in
-`${CAMOUFOX_INSTALL_DIR:-$HOME/.cache/camoufox}`. It also requires `curl`,
-`sha256sum`, `tar`, `ldd`, and `appimagetool`. Set `APPIMAGETOOL` when the tool
-is not available on `PATH` or at `$HOME/AppImages/appimagetool`.
+`${CAMOUFOX_INSTALL_DIR:-$HOME/.cache/camoufox}`. It requires Podman for the
+cached Debian Bookworm native-library collector plus `curl`, `sha256sum`,
+`tar`, `ldd`, `mksquashfs`, and `strip`. The collector image is tagged by the
+hash of its Containerfile, so normal rebuilds reuse it instead of reinstalling
+the Debian dependency set.
 
 The resulting files are:
 
@@ -124,8 +126,18 @@ Verify an existing artifact with:
 npm run verify:appimage -- release/Perchance-1.0.0-x86_64.AppImage
 ```
 
-The AppImage targets modern glibc-based x86_64 desktop Linux. The host still
-provides the kernel, glibc, graphics drivers, and display integration.
+Run a live extraction-and-generation test in the existing Debian Distrobox
+with:
+
+```bash
+sh scripts/verify-appimage-debian.sh
+```
+
+The AppImage targets glibc-based x86_64 desktop Linux. It embeds the GTK, GLib,
+Pango, Cairo, X11, Wayland, font, audio, and related native user-space library
+closure required by Camoufox. The host still provides the Linux kernel, glibc
+loader and ABI, graphics drivers, and optional display integration. FUSE is not
+required because AppImage extraction-and-run mode is supported.
 
 ## Usage (TypeScript API)
 

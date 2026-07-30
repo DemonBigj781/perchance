@@ -55,7 +55,7 @@ verify_elf_dependencies() {
   fi
 }
 
-for command_name in curl file find grep ldd mksquashfs node npm sha256sum strip tar; do
+for command_name in curl file find grep ldd mksquashfs node npm podman sha256sum strip tar; do
   require_command "$command_name"
 done
 
@@ -139,6 +139,18 @@ cp -R -p "$CAMOUFOX_SOURCE/." "$APPDIR/usr/lib/camoufox/"
 
 "$ROOT/scripts/prune-appimage-runtime.sh" "$APPDIR"
 
+NATIVE_BUILD="$BUILD_ROOT/native-libs"
+"$ROOT/scripts/collect-appimage-native-libs.sh" "$APPDIR" "$NATIVE_BUILD"
+mkdir -p "$APPDIR/usr/lib/native" "$APPDIR/usr/share/perchance/native-libs"
+cp -R -p "$NATIVE_BUILD/libraries/." "$APPDIR/usr/lib/native/"
+cp -R -p "$NATIVE_BUILD/licenses" \
+  "$NATIVE_BUILD/dependencies.txt" \
+  "$NATIVE_BUILD/duplicate-hashes.tsv" \
+  "$NATIVE_BUILD/libraries.sha256" \
+  "$NATIVE_BUILD/packages.tsv" \
+  "$NATIVE_BUILD/sonames.tsv" \
+  "$APPDIR/usr/share/perchance/native-libs/"
+
 cp -p "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
 cp -p "$ROOT/packaging/appimage/perchance.desktop" "$APPDIR/"
 cp -p "$ROOT/packaging/appimage/perchance.svg" "$APPDIR/"
@@ -149,10 +161,10 @@ EMBEDDED_NODE="$APPDIR/usr/bin/node"
 verify_elf_dependencies "$EMBEDDED_NODE"
 verify_elf_dependencies \
   "$APPDIR/usr/lib/camoufox/camoufox" \
-  "$APPDIR/usr/lib/camoufox"
+  "$APPDIR/usr/lib/camoufox:$APPDIR/usr/lib/native"
 verify_elf_dependencies \
   "$APPDIR/usr/lib/camoufox/camoufox-bin" \
-  "$APPDIR/usr/lib/camoufox"
+  "$APPDIR/usr/lib/camoufox:$APPDIR/usr/lib/native"
 verify_elf_dependencies \
   "$APP_HOME/node_modules/better-sqlite3/prebuilds/linux-x64.node"
 

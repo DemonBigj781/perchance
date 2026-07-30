@@ -40,7 +40,7 @@ AppImage type 2, SquashFS, `strace`, Podman.
   proving that bundled Node.js and Camoufox are used and no Python or system
   browser is executed.
 - [x] Run the baseline smoke test in extract-and-run mode.
-- [ ] Commit the baseline before changing payload contents.
+- [x] Commit the baseline before changing payload contents.
 
 ### Task 2: Remove Node.js Build-Time Payload
 
@@ -55,7 +55,7 @@ AppImage type 2, SquashFS, `strace`, Podman.
 - [x] Keep the official Node.js executable and license but remove build-only
   directories and runtime-unneeded command shims.
 - [x] Rebuild, audit, verify, and run the live smoke test.
-- [ ] Commit only if all behavior remains valid.
+- [x] Commit only if all behavior remains valid.
 
 ### Task 3: Remove Unused Application Dependencies and Metadata
 
@@ -75,7 +75,7 @@ AppImage type 2, SquashFS, `strace`, Podman.
 - [x] Preserve package manifests, licenses, Camoufox data files, Playwright
   runtime JavaScript, the x86_64 Impit native module, and all browser payload.
 - [x] Rebuild, audit, verify, and run the live smoke test.
-- [ ] Commit only if all behavior remains valid.
+- [x] Commit only if all behavior remains valid.
 
 ### Task 4: Optimize SquashFS Compression
 
@@ -88,22 +88,23 @@ AppImage type 2, SquashFS, `strace`, Podman.
 - [x] Benchmark high-level zstd and xz with larger SquashFS blocks.
 - [x] Select the smallest format that mounts and extracts correctly.
 - [x] Rebuild and rerun every static and live validation.
-- [ ] Commit the chosen compression settings separately.
+- [x] Commit the chosen compression settings separately.
 
 ### Task 5: Validate Portability and Report
 
 **Files:**
 
-- Create: `scripts/verify-appimage-container.sh`
+- Create: `scripts/verify-appimage-debian.sh`
 - Modify: `package.json`
 - Update: `README.md`
 - Complete: `docs/appimage-size-audit.md`
 
-- [ ] Validate direct and extraction-and-run modes on the host.
-- [ ] Validate the extracted AppDir in a clean x86_64 Linux container without
-  Node.js, Python, Firefox, Chromium, or Camoufox installed.
-- [ ] Confirm image generation, verification, TLS networking, output saving,
+- [x] Validate direct and extraction-and-run modes on the host.
+- [x] Validate the extracted AppDir in a clean x86_64 Debian environment
+  without Node.js, Firefox, Chromium, Chrome, or Camoufox installed, and prove
+  that its available Python runtime is not executed.
+- [x] Confirm image generation, verification, TLS networking, output saving,
   and process cleanup.
-- [ ] Record exact original/final sizes, removals, retained components,
+- [x] Record exact original/final sizes, removals, retained components,
   rejected optimizations, compression, and portability tradeoffs.
-- [ ] Run the final full suite and checksum verification.
+- [x] Run the final full suite and checksum verification.

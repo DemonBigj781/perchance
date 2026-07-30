@@ -14,6 +14,8 @@ dist/
 build/appimage/
 release/*.AppImage
 release/*.AppImage.sha256
+release/baseline/*.AppImage
+release/baseline/*.AppImage.sha256
 
 # Ignore system and IDE-specific files
 *.pyo
