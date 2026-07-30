@@ -219,4 +219,16 @@ describe("AppImage runtime files", () => {
       await rm(temporaryRoot, { recursive: true, force: true });
     }
   });
+
+  it("uses the smallest validated SquashFS compression settings", async () => {
+    const buildScript = await readFile(buildScriptPath, "utf8");
+
+    assert.match(buildScript, /mksquashfs/);
+    assert.match(buildScript, /-comp xz/);
+    assert.match(buildScript, /-b 1M/);
+    assert.match(buildScript, /-Xdict-size 100%/);
+    assert.match(buildScript, /-Xbcj x86/);
+    assert.match(buildScript, /-all-root/);
+    assert.match(buildScript, /AppImageKit\/releases\/download\/continuous/);
+  });
 });

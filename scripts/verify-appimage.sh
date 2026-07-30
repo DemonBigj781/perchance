@@ -19,11 +19,19 @@ esac
 
 [ -x "$APPIMAGE" ] || fail "AppImage is missing or not executable: $APPIMAGE"
 [ -f "$APPIMAGE.sha256" ] || fail "checksum file is missing: $APPIMAGE.sha256"
+command -v unsquashfs >/dev/null 2>&1 || fail "unsquashfs is required"
 
 (
   cd "$(dirname "$APPIMAGE")"
   sha256sum -c "$(basename "$APPIMAGE.sha256")"
 )
+
+OFFSET=$("$APPIMAGE" --appimage-offset)
+SQUASHFS_INFO=$(unsquashfs -o "$OFFSET" -s "$APPIMAGE")
+printf '%s\n' "$SQUASHFS_INFO" | grep -F 'Compression xz' >/dev/null ||
+  fail "AppImage does not use the validated xz compressor"
+printf '%s\n' "$SQUASHFS_INFO" | grep -F 'Block size 1048576' >/dev/null ||
+  fail "AppImage does not use the validated 1 MiB SquashFS block size"
 
 HELP_OUTPUT=$("$APPIMAGE" 2>&1) || {
   HELP_OUTPUT=$(APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE" 2>&1) ||

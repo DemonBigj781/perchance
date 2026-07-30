@@ -85,9 +85,9 @@ AppImage type 2, SquashFS, `strace`, Podman.
 - Modify: `scripts/verify-appimage.sh`
 - Update: `docs/appimage-size-audit.md`
 
-- [ ] Benchmark high-level zstd and xz with larger SquashFS blocks.
-- [ ] Select the smallest format that mounts and extracts correctly.
-- [ ] Rebuild and rerun every static and live validation.
+- [x] Benchmark high-level zstd and xz with larger SquashFS blocks.
+- [x] Select the smallest format that mounts and extracts correctly.
+- [x] Rebuild and rerun every static and live validation.
 - [ ] Commit the chosen compression settings separately.
 
 ### Task 5: Validate Portability and Report

@@ -9,8 +9,8 @@ NODE_VERSION=24.18.1
 NODE_ARCHIVE="node-v${NODE_VERSION}-linux-x64.tar.xz"
 NODE_DIRECTORY="node-v${NODE_VERSION}-linux-x64"
 NODE_SHA256=d6c664df3f3f61458e8c277585571328522d705166723a7c7823a9253a4d15a0
-APPIMAGE_RUNTIME=runtime-x86_64
-APPIMAGE_RUNTIME_SHA256=1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf
+APPIMAGE_RUNTIME=runtime-appimagekit-x86_64
+APPIMAGE_RUNTIME_SHA256=66f5b22f035022b8bdebb54c066aa6edc7b5db282fe6cdb372e7965f80772557
 CAMOUFOX_VERSION=152.0.4
 CAMOUFOX_RELEASE=beta.28
 
@@ -41,22 +41,6 @@ reset_staging() {
   mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$RELEASE_DIR"
 }
 
-find_appimagetool() {
-  if [ -n "${APPIMAGETOOL:-}" ]; then
-    printf '%s\n' "$APPIMAGETOOL"
-    return
-  fi
-  if command -v appimagetool >/dev/null 2>&1; then
-    command -v appimagetool
-    return
-  fi
-  if [ -x "$HOME/AppImages/appimagetool" ]; then
-    printf '%s\n' "$HOME/AppImages/appimagetool"
-    return
-  fi
-  fail "appimagetool was not found; set APPIMAGETOOL to its executable path"
-}
-
 verify_elf_dependencies() {
   binary=$1
   library_path=${2:-}
@@ -71,13 +55,11 @@ verify_elf_dependencies() {
   fi
 }
 
-for command_name in curl file find grep ldd node npm sha256sum strip tar; do
+for command_name in curl file find grep ldd mksquashfs node npm sha256sum strip tar; do
   require_command "$command_name"
 done
 
 [ "$(uname -m)" = "x86_64" ] || fail "AppImage builds require x86_64"
-APPIMAGETOOL_PATH=$(find_appimagetool)
-[ -x "$APPIMAGETOOL_PATH" ] || fail "appimagetool is not executable"
 
 [ -x "$CAMOUFOX_SOURCE/camoufox" ] ||
   fail "Camoufox executable not found in $CAMOUFOX_SOURCE"
@@ -118,7 +100,7 @@ printf '%s  %s\n' "$NODE_SHA256" "$NODE_DOWNLOAD" | sha256sum -c -
 if [ ! -f "$RUNTIME_DOWNLOAD" ]; then
   printf 'Downloading the AppImage type 2 runtime...\n'
   curl -fL \
-    "https://github.com/AppImage/type2-runtime/releases/download/continuous/$APPIMAGE_RUNTIME" \
+    "https://github.com/AppImage/AppImageKit/releases/download/continuous/runtime-x86_64" \
     -o "$RUNTIME_DOWNLOAD.part"
   mv "$RUNTIME_DOWNLOAD.part" "$RUNTIME_DOWNLOAD"
 fi
@@ -200,13 +182,16 @@ PACKAGE_VERSION=$(node -p "require('$ROOT/package.json').version")
 OUTPUT_NAME="Perchance-${PACKAGE_VERSION}-x86_64.AppImage"
 OUTPUT="$RELEASE_DIR/$OUTPUT_NAME"
 CHECKSUM="$OUTPUT.sha256"
+SQUASHFS="$STAGING_DIR/Perchance.squashfs"
 SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
 
-rm -f "$OUTPUT" "$CHECKSUM"
+rm -f "$OUTPUT" "$CHECKSUM" "$SQUASHFS"
 printf 'Packaging %s...\n' "$OUTPUT_NAME"
-ARCH=x86_64 SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
-  "$APPIMAGETOOL_PATH" --no-appstream --comp zstd \
-  --runtime-file "$RUNTIME_DOWNLOAD" "$APPDIR" "$OUTPUT"
+SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+  mksquashfs "$APPDIR" "$SQUASHFS" -noappend -comp xz -b 1M \
+  -Xdict-size 100% -Xbcj x86 -all-root
+cat "$RUNTIME_DOWNLOAD" "$SQUASHFS" >"$OUTPUT"
+rm -f "$SQUASHFS"
 chmod 755 "$OUTPUT"
 (
   cd "$RELEASE_DIR"

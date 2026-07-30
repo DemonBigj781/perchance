@@ -266,3 +266,26 @@ now sets `TMPDIR` to its workspace-owned directory, removes extraction trees on
 every exit, and deletes the generated test image after recording its type and
 size. The clean rerun generated an 87,844-byte JPEG and left zero Camoufox
 processes and zero test images.
+
+## Reduction 4: SquashFS Compression
+
+Two strongest practical codecs were benchmarked against the same unchanged
+1,490,907,401-byte AppDir with 1 MiB blocks:
+
+| Compressor | SquashFS bytes | Build time | Difference from zstd baseline |
+| --- | ---: | ---: | ---: |
+| zstd level 15, 128 KiB | 720,429,024 | 110 seconds | baseline |
+| zstd level 22, 1 MiB | 669,413,376 | 318 seconds | -51,015,648 |
+| xz, 1 MiB dictionary, x86 BCJ | 619,196,416 | 501 seconds | -101,232,608 |
+
+The newer pinned `AppImage/type2-runtime` binary supports only zlib and zstd,
+so it correctly rejected the xz candidate. The official AppImageKit x86_64
+runtime supports xz and passed direct mounting, extraction-and-run, CLI help,
+and live Perchance image generation. Its pinned SHA-256 is
+`66f5b22f035022b8bdebb54c066aa6edc7b5db282fe6cdb372e7965f80772557`.
+
+The build now creates SquashFS directly with the system `mksquashfs`, appends
+it to the pinned official type 2 runtime, and normalizes all SquashFS ownership
+to root. The selected settings are xz, 1 MiB blocks and dictionary, and the x86
+BCJ filter. This increases release build time but leaves every application and
+browser byte unchanged.
