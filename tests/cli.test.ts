@@ -67,12 +67,13 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
         setBrowserContext() {},
         async image(prompt, options) {
           state.imageCalls.push({ prompt, options });
+          const imageNumber = state.imageCalls.length;
           await state.imageGate;
           if (state.imageError) throw state.imageError;
           return {
-            imageId: "image-1",
+            imageId: `image-${imageNumber}`,
             fileExtension: "png",
-            seed: 42,
+            seed: 41 + imageNumber,
             prompt,
             width: 768,
             height: 768,
@@ -80,7 +81,7 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
             negativePrompt: options.negativePrompt ?? "",
             maybeNsfw: false,
             toString() {
-              return "image-1.png";
+              return `image-${imageNumber}.png`;
             },
             async save(path) {
               state.savedPaths.push(path);
@@ -250,6 +251,113 @@ describe("image command", () => {
     });
     assert.deepEqual(dependencies.state.mkdirPaths, ["/work/output"]);
     assert.deepEqual(dependencies.state.savedPaths, ["/work/output/fox.png"]);
+  });
+
+  it("generates multiple images through one browser context", async () => {
+    const dependencies = createFakeDependencies();
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "image",
+      "three foxes",
+      "--count",
+      "3",
+      "--seed",
+      "50",
+    ], dependencies);
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.launchCalls, [{ headless: true }]);
+    assert.deepEqual(dependencies.state.imageCalls, [
+      {
+        prompt: "three foxes",
+        options: { shape: "square", seed: 50, guidanceScale: 7 },
+      },
+      {
+        prompt: "three foxes",
+        options: { shape: "square", seed: 51, guidanceScale: 7 },
+      },
+      {
+        prompt: "three foxes",
+        options: { shape: "square", seed: 52, guidanceScale: 7 },
+      },
+    ]);
+    assert.deepEqual(dependencies.state.savedPaths, [
+      "/work/generated_images/image-1.png",
+      "/work/generated_images/image-2.png",
+      "/work/generated_images/image-3.png",
+    ]);
+    assert.equal(
+      dependencies.state.stdout,
+      "/work/generated_images/image-1.png\n" +
+        "/work/generated_images/image-2.png\n" +
+        "/work/generated_images/image-3.png\n",
+    );
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+  });
+
+  it("numbers an explicit output filename for a batch", async () => {
+    const dependencies = createFakeDependencies();
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "image",
+      "two foxes",
+      "--count",
+      "2",
+      "--output",
+      "/work/output/fox.png",
+    ], dependencies);
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.savedPaths, [
+      "/work/output/fox-1.png",
+      "/work/output/fox-2.png",
+    ]);
+  });
+
+  it("prints a JSON array for a multi-image batch", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.existingDirectories.add("/work/pictures");
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "image",
+      "two green foxes",
+      "--count",
+      "2",
+      "--output",
+      "/work/pictures",
+      "--json",
+    ], dependencies);
+
+    assert.equal(status, 0);
+    const output = JSON.parse(dependencies.state.stdout);
+    assert.equal(output.length, 2);
+    assert.equal(output[0].path, "/work/pictures/image-1.png");
+    assert.equal(output[1].path, "/work/pictures/image-2.png");
+    assert.equal(output[0].imageId, "image-1");
+    assert.equal(output[1].imageId, "image-2");
+  });
+
+  it("rejects an unsafe image count before launching a browser", async () => {
+    const dependencies = createFakeDependencies();
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "image",
+      "too many foxes",
+      "--count",
+      "101",
+    ], dependencies);
+
+    assert.equal(status, 1);
+    assert.equal(dependencies.state.launchCalls.length, 0);
+    assert.match(dependencies.state.stderr, /at most 100/);
   });
 
   it("appends the generated name to an output directory and prints JSON", async () => {

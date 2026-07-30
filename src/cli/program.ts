@@ -1,5 +1,5 @@
 import { access, mkdir, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 
 import {
   Command,
@@ -97,6 +97,14 @@ function parsePositiveInteger(value: string): number {
   return parsed;
 }
 
+function parseImageCount(value: string): number {
+  const parsed = parsePositiveInteger(value);
+  if (parsed > 100) {
+    throw new InvalidArgumentError("Expected at most 100 images.");
+  }
+  return parsed;
+}
+
 function parseShape(value: string): ImageShape {
   if (!IMAGE_SHAPES.includes(value as ImageShape)) {
     throw new InvalidArgumentError(
@@ -169,6 +177,7 @@ async function withBrowserContext<T>(
 
 interface ImageCommandOptions extends OptionValues {
   output?: string;
+  count: number;
   shape: ImageShape;
   negativePrompt?: string;
   seed: number;
@@ -185,6 +194,8 @@ export async function resolveImageOutput(
   requested: string | undefined,
   generatedName: string,
   dependencies: CliDependencies,
+  batchIndex = 0,
+  batchCount = 1,
 ): Promise<string> {
   if (!requested) {
     const directory = join(dependencies.cwd(), "generated_images");
@@ -192,7 +203,7 @@ export async function resolveImageOutput(
     return join(directory, generatedName);
   }
 
-  const destination = absolutePath(requested, dependencies);
+  let destination = absolutePath(requested, dependencies);
   const endsWithSeparator = /[\\/]$/.test(requested);
   const exists = await dependencies.pathExists(destination);
   const isDirectory = exists && await dependencies.isDirectory(destination);
@@ -200,6 +211,14 @@ export async function resolveImageOutput(
   if (endsWithSeparator || isDirectory) {
     await dependencies.mkdir(destination);
     return join(destination, generatedName);
+  }
+
+  if (batchCount > 1) {
+    const extension = extname(destination);
+    const stem = extension
+      ? destination.slice(0, -extension.length)
+      : destination;
+    destination = `${stem}-${batchIndex + 1}${extension}`;
   }
 
   await dependencies.mkdir(dirname(destination));
@@ -215,6 +234,7 @@ function addImageCommand(
     .description("Generate and save an image")
     .argument("<prompt>", "image prompt")
     .option("-o, --output <path>", "destination file or directory")
+    .option("-n, --count <number>", "number of images", parseImageCount, 1)
     .option("--shape <shape>", "portrait, square, or landscape", parseShape, "square")
     .option("--negative-prompt <text>", "features to avoid")
     .option("--seed <number>", "generation seed", parseInteger, -1)
@@ -226,25 +246,27 @@ function addImageCommand(
         const generator = dependencies.createImageGenerator();
         generator.setBrowserContext(context);
 
-        const generationOptions: GenerateImageOptions = {
-          shape: options.shape,
-          seed: options.seed,
-          guidanceScale: options.guidanceScale,
-        };
-        if (options.negativePrompt !== undefined) {
-          generationOptions.negativePrompt = options.negativePrompt;
-        }
+        const jsonResults: Array<Record<string, unknown>> = [];
+        for (let index = 0; index < options.count; index += 1) {
+          const generationOptions: GenerateImageOptions = {
+            shape: options.shape,
+            seed: options.seed === -1 ? -1 : options.seed + index,
+            guidanceScale: options.guidanceScale,
+          };
+          if (options.negativePrompt !== undefined) {
+            generationOptions.negativePrompt = options.negativePrompt;
+          }
 
-        const result = await generator.image(prompt, generationOptions);
-        const output = await resolveImageOutput(
-          options.output,
-          result.toString(),
-          dependencies,
-        );
-        const savedPath = await result.save(output);
-
-        if (options.json) {
-          dependencies.stdout(`${JSON.stringify({
+          const result = await generator.image(prompt, generationOptions);
+          const output = await resolveImageOutput(
+            options.output,
+            result.toString(),
+            dependencies,
+            index,
+            options.count,
+          );
+          const savedPath = await result.save(output);
+          const jsonResult = {
             path: savedPath,
             imageId: result.imageId,
             fileExtension: result.fileExtension,
@@ -255,9 +277,18 @@ function addImageCommand(
             guidanceScale: result.guidanceScale,
             negativePrompt: result.negativePrompt,
             maybeNsfw: result.maybeNsfw,
-          })}\n`);
-        } else {
-          dependencies.stdout(`${savedPath}\n`);
+          };
+
+          if (options.json) {
+            jsonResults.push(jsonResult);
+          } else {
+            dependencies.stdout(`${savedPath}\n`);
+          }
+        }
+
+        if (options.json) {
+          const output = options.count === 1 ? jsonResults[0] : jsonResults;
+          dependencies.stdout(`${JSON.stringify(output)}\n`);
         }
       });
     });

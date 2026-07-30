@@ -67,8 +67,13 @@ current directory. Use an exact filename or an output directory:
 ```bash
 perchance image "a red fox" --shape landscape --output ./fox.png
 perchance image "a red fox" --output ./generated_images/
+perchance image "a red fox" --count 4 --output ./generated_images/
 ```
 
+`--count` queues up to 100 images through one browser context. Random seeds stay
+random; an explicit seed advances once per image. For a batch sent to an exact
+filename, the CLI inserts `-1`, `-2`, and so on before the extension. Batch JSON
+output is an array, while the existing single-image JSON object is unchanged.
 Additional image options include `--negative-prompt`, `--seed`,
 `--guidance-scale`, and `--json`.
 
