@@ -159,3 +159,31 @@ Camoufox fonts, addons, GeoIP data, codecs, TLS libraries, browser archives,
 fingerprint data, WebGL data, fontconfig, dictionaries, hyphenation, and native
 browser libraries remain unchanged unless later evidence proves a removal safe
 and every live validation still passes.
+
+## Reduction 1: Node Build Tooling
+
+Commit scope: remove Node components needed only while constructing the AppDir.
+
+Removed after `npm ci` completes:
+
+- 58,969,198 bytes of Node C and C++ headers.
+- 12,583,283 bytes of bundled npm and Corepack packages.
+- Node package-manager command shims from `usr/lib/node/bin`.
+- 56,468 bytes of Node documentation under `share`.
+- Node `README.md` and `CHANGELOG.md`.
+
+Retained:
+
+- The official Node.js v24.18.1 x86_64 executable.
+- The Node.js license.
+- The `usr/bin/node` AppDir link used by `AppRun`.
+
+| Measurement | Before | After | Saved |
+| --- | ---: | ---: | ---: |
+| Uncompressed AppDir | 1,621,223,305 | 1,549,004,665 | 72,218,640 |
+| Complete AppImage | 742,050,296 | 738,433,528 | 3,616,768 |
+
+Verification passed: 52 unit tests, checksum and extracted-runtime checks,
+embedded-browser path and version checks, immutable browser-update behavior,
+live image generation, generated-image validation, process cleanup, and
+`strace` provenance showing only the embedded Node.js and Camoufox executables.

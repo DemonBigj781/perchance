@@ -155,6 +155,8 @@ cp -p "$ROOT/LICENSE" "$APP_HOME/"
 mkdir -p "$APPDIR/usr/lib/camoufox"
 cp -R -p "$CAMOUFOX_SOURCE/." "$APPDIR/usr/lib/camoufox/"
 
+"$ROOT/scripts/prune-appimage-runtime.sh" "$APPDIR"
+
 cp -p "$ROOT/packaging/appimage/AppRun" "$APPDIR/AppRun"
 cp -p "$ROOT/packaging/appimage/perchance.desktop" "$APPDIR/"
 cp -p "$ROOT/packaging/appimage/perchance.svg" "$APPDIR/"

@@ -50,11 +50,11 @@ AppImage type 2, SquashFS, `strace`, Podman.
 - Modify: `tests/appimageFiles.test.ts`
 - Update: `docs/appimage-size-audit.md`
 
-- [ ] Add a failing test requiring removal of Node headers, npm, Corepack,
+- [x] Add a failing test requiring removal of Node headers, npm, Corepack,
   documentation, and package-manager tooling after `npm ci` completes.
-- [ ] Keep the official Node.js executable and license but remove build-only
+- [x] Keep the official Node.js executable and license but remove build-only
   directories and runtime-unneeded command shims.
-- [ ] Rebuild, audit, verify, and run the live smoke test.
+- [x] Rebuild, audit, verify, and run the live smoke test.
 - [ ] Commit only if all behavior remains valid.
 
 ### Task 3: Remove Unused Application Dependencies and Metadata

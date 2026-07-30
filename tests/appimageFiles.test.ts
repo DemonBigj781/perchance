@@ -1,12 +1,37 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import { describe, it } from "node:test";
 
 const appRunPath = "packaging/appimage/AppRun";
 const desktopPath = "packaging/appimage/perchance.desktop";
 const iconPath = "packaging/appimage/perchance.svg";
 const auditScriptPath = "scripts/audit-appimage-size.sh";
+const buildScriptPath = "scripts/build-appimage.sh";
 const smokeScriptPath = "scripts/smoke-appimage.sh";
+const pruneScriptPath = "scripts/prune-appimage-runtime.sh";
+const execFileAsync = promisify(execFile);
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 describe("AppImage runtime files", () => {
   it("launches the bundled CLI with the embedded Camoufox runtime", async () => {
@@ -60,5 +85,42 @@ describe("AppImage runtime files", () => {
     assert.match(smokeScript, /usr\/lib\/camoufox\/camoufox/);
     assert.match(smokeScript, /external Python runtime/);
     assert.match(smokeScript, /Camoufox processes remain/);
+  });
+
+  it("prunes Node build tooling while retaining the runtime and license", async () => {
+    const buildScript = await readFile(buildScriptPath, "utf8");
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "perchance-prune-"));
+    const nodeRoot = join(temporaryRoot, "usr/lib/node");
+
+    try {
+      assert.match(buildScript, /prune-appimage-runtime\.sh/);
+      await mkdir(join(nodeRoot, "bin"), { recursive: true });
+      await mkdir(join(nodeRoot, "include/node"), { recursive: true });
+      await mkdir(join(nodeRoot, "lib/node_modules/npm"), { recursive: true });
+      await mkdir(join(nodeRoot, "share/doc"), { recursive: true });
+      await writeFile(join(nodeRoot, "bin/node"), "node-runtime");
+      await writeFile(join(nodeRoot, "bin/npm"), "npm-shim");
+      await writeFile(join(nodeRoot, "bin/corepack"), "corepack-shim");
+      await writeFile(join(nodeRoot, "include/node/node.h"), "header");
+      await writeFile(join(nodeRoot, "lib/node_modules/npm/index.js"), "npm");
+      await writeFile(join(nodeRoot, "share/doc/readme"), "documentation");
+      await writeFile(join(nodeRoot, "LICENSE"), "license");
+      await writeFile(join(nodeRoot, "README.md"), "readme");
+      await chmod(join(nodeRoot, "bin/node"), 0o755);
+      await chmod(pruneScriptPath, 0o755);
+
+      await execFileAsync(pruneScriptPath, [temporaryRoot]);
+
+      assert.equal(await pathExists(join(nodeRoot, "bin/node")), true);
+      assert.equal(await pathExists(join(nodeRoot, "LICENSE")), true);
+      assert.equal(await pathExists(join(nodeRoot, "bin/npm")), false);
+      assert.equal(await pathExists(join(nodeRoot, "bin/corepack")), false);
+      assert.equal(await pathExists(join(nodeRoot, "include")), false);
+      assert.equal(await pathExists(join(nodeRoot, "lib")), false);
+      assert.equal(await pathExists(join(nodeRoot, "share")), false);
+      assert.equal(await pathExists(join(nodeRoot, "README.md")), false);
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+    }
   });
 });
