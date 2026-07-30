@@ -224,3 +224,45 @@ Verification passed: direct `better-sqlite3` loading, an actual Camoufox WebGL
 fingerprint query against the bundled database, all 52 unit tests, extracted
 runtime verification, and live Perchance image generation. The generated JPEG
 was 87,038 bytes and no Camoufox process remained afterward.
+
+## Reduction 3: Runtime-Irrelevant Metadata
+
+Removed from production npm packages:
+
+- 4,042,787 bytes of source maps.
+- 2,557,230 bytes of package TypeScript declarations.
+- Package readmes, changelogs, histories, contributing guides, npm ignore
+  files, Git ignore files, TypeScript build configuration, and npm's staging
+  lock metadata.
+- Playwright's 3,046,426-byte recorder and trace-viewer web frontend. The
+  Firefox protocol, browser server, page execution, networking, cookies,
+  storage, TLS, tracing internals, screenshots, and browser-context runtime
+  remain present.
+- `ua-parser-js/dist`, including icon artwork not referenced by its exported
+  parser implementation.
+- The unreferenced 3,391,490-byte `xml2js.bc.js` alternate bytecode artifact;
+  the CommonJS parser used by Camoufox remains present.
+- Empty directories left by these removals.
+
+Intentionally retained:
+
+- Every package manifest and license or notice file.
+- 11,565 bytes of Perchance's own public TypeScript declarations.
+- Runtime JavaScript for every transitive dependency.
+- Camoufox configuration databases, XML territory data, fingerprint network
+  model, browser archives, addons, dictionaries, fonts, codecs, and libraries.
+
+| Measurement | Before | After | Saved |
+| --- | ---: | ---: | ---: |
+| Uncompressed AppDir | 1,505,358,106 | 1,490,907,401 | 14,450,705 |
+| Complete AppImage | 724,949,496 | 721,373,688 | 3,575,808 |
+| Perchance application tree | 37,282,304 | 22,831,599 | 14,450,705 |
+| Playwright Core | 9,311,756 | 4,530,004 | 4,781,752 |
+
+The first smoke attempt exhausted the 7.3 GB `/tmp` tmpfs because AppImage's
+extract-and-run mode had retained earlier 1.4-1.6 GB extraction directories.
+This was a test-harness storage failure, not a runtime regression. The harness
+now sets `TMPDIR` to its workspace-owned directory, removes extraction trees on
+every exit, and deletes the generated test image after recording its type and
+size. The clean rerun generated an 87,844-byte JPEG and left zero Camoufox
+processes and zero test images.

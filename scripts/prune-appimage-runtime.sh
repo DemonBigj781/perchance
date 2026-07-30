@@ -39,6 +39,22 @@ if [ -d "$BETTER_SQLITE" ]; then
   strip_elf "$BETTER_SQLITE/prebuilds/linux-x64.node"
 fi
 
+if [ -d "$APP_HOME/node_modules" ]; then
+  find "$APP_HOME/node_modules" -type f \( \
+    -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \
+    \) -delete
+  find "$APP_HOME/node_modules" -type f \( \
+    -iname 'README*' -o -iname 'CHANGELOG*' -o -iname 'HISTORY*' -o \
+    -iname 'CONTRIBUTING*' -o -name '.npmignore' -o -name '.gitignore' -o \
+    -name 'tsconfig*.json' \
+    \) -delete
+  rm -f "$APP_HOME/node_modules/.package-lock.json"
+  rm -f "$APP_HOME/node_modules/xml2js/lib/xml2js.bc.js"
+  rm -rf "${APP_HOME:?}/node_modules/ua-parser-js/dist"
+  rm -rf "${APP_HOME:?}/node_modules/playwright-core/lib/vite"
+  find "$APP_HOME/node_modules" -depth -type d -empty -delete
+fi
+
 strip_elf "$NODE_ROOT/bin/node"
 
 [ -x "$NODE_ROOT/bin/node" ] || fail "Node.js runtime was removed during pruning"

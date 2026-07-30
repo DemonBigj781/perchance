@@ -81,13 +81,15 @@ describe("AppImage runtime files", () => {
     assert.match(auditScript, /camoufox_fonts_macos/);
     assert.match(auditScript, /python_bytecode/);
     assert.match(smokeScript, /APPIMAGE_EXTRACT_AND_RUN/);
+    assert.match(smokeScript, /TMPDIR=/);
     assert.match(smokeScript, /strace/);
     assert.match(smokeScript, /usr\/lib\/camoufox\/camoufox/);
     assert.match(smokeScript, /external Python runtime/);
     assert.match(smokeScript, /Camoufox processes remain/);
+    assert.match(smokeScript, /image_removed=true/);
   });
 
-  it("prunes Node build tooling while retaining the runtime and license", async () => {
+  it("prunes build-only payload while retaining runtime assets", async () => {
     const buildScript = await readFile(buildScriptPath, "utf8");
     const temporaryRoot = await mkdtemp(join(tmpdir(), "perchance-prune-"));
     const nodeRoot = join(temporaryRoot, "usr/lib/node");
@@ -104,6 +106,14 @@ describe("AppImage runtime files", () => {
       await mkdir(join(sqliteRoot, "deps/sqlite3"), { recursive: true });
       await mkdir(join(sqliteRoot, "src"), { recursive: true });
       await mkdir(join(modulesRoot, "node-addon-api"), { recursive: true });
+      await mkdir(join(modulesRoot, "runtime-package"), { recursive: true });
+      await mkdir(join(modulesRoot, "xml2js/lib"), { recursive: true });
+      await mkdir(join(modulesRoot, "ua-parser-js/dist/icons"), {
+        recursive: true,
+      });
+      await mkdir(join(modulesRoot, "playwright-core/lib/vite/traceViewer"), {
+        recursive: true,
+      });
       await writeFile(join(nodeRoot, "bin/node"), "node-runtime");
       await writeFile(join(nodeRoot, "bin/npm"), "npm-shim");
       await writeFile(join(nodeRoot, "bin/corepack"), "corepack-shim");
@@ -122,6 +132,18 @@ describe("AppImage runtime files", () => {
       await writeFile(join(sqliteRoot, "binding.gyp"), "build metadata");
       await writeFile(join(sqliteRoot, "README.md"), "documentation");
       await writeFile(join(modulesRoot, "node-addon-api/index.js"), "build helper");
+      await writeFile(join(modulesRoot, "runtime-package/index.js"), "runtime");
+      await writeFile(join(modulesRoot, "runtime-package/index.d.ts"), "types");
+      await writeFile(join(modulesRoot, "runtime-package/index.js.map"), "map");
+      await writeFile(join(modulesRoot, "runtime-package/README.md"), "docs");
+      await writeFile(join(modulesRoot, "runtime-package/LICENSE"), "license");
+      await writeFile(join(modulesRoot, "runtime-package/package.json"), "{}");
+      await writeFile(join(modulesRoot, "xml2js/lib/xml2js.bc.js"), "unused");
+      await writeFile(join(modulesRoot, "ua-parser-js/dist/icons/icon.svg"), "icon");
+      await writeFile(
+        join(modulesRoot, "playwright-core/lib/vite/traceViewer/index.html"),
+        "developer frontend",
+      );
       await chmod(join(nodeRoot, "bin/node"), 0o755);
       await chmod(pruneScriptPath, 0o755);
 
@@ -160,6 +182,39 @@ describe("AppImage runtime files", () => {
       assert.equal(await pathExists(join(sqliteRoot, "binding.gyp")), false);
       assert.equal(await pathExists(join(sqliteRoot, "README.md")), false);
       assert.equal(await pathExists(join(modulesRoot, "node-addon-api")), false);
+      assert.equal(
+        await pathExists(join(modulesRoot, "runtime-package/index.js")),
+        true,
+      );
+      assert.equal(
+        await pathExists(join(modulesRoot, "runtime-package/LICENSE")),
+        true,
+      );
+      assert.equal(
+        await pathExists(join(modulesRoot, "runtime-package/package.json")),
+        true,
+      );
+      assert.equal(
+        await pathExists(join(modulesRoot, "runtime-package/index.d.ts")),
+        false,
+      );
+      assert.equal(
+        await pathExists(join(modulesRoot, "runtime-package/index.js.map")),
+        false,
+      );
+      assert.equal(
+        await pathExists(join(modulesRoot, "runtime-package/README.md")),
+        false,
+      );
+      assert.equal(
+        await pathExists(join(modulesRoot, "xml2js/lib/xml2js.bc.js")),
+        false,
+      );
+      assert.equal(await pathExists(join(modulesRoot, "ua-parser-js/dist")), false);
+      assert.equal(
+        await pathExists(join(modulesRoot, "playwright-core/lib/vite")),
+        false,
+      );
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true });
     }

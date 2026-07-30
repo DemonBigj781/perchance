@@ -57,6 +57,15 @@ EXTRACTED="$VERIFY_ROOT/squashfs-root"
   fail "better-sqlite3 Linux x86_64 runtime is missing"
 [ ! -d "$EXTRACTED/usr/lib/perchance/node_modules/node-addon-api" ] ||
   fail "build-only node-addon-api package was not pruned"
+[ ! -d "$EXTRACTED/usr/lib/perchance/node_modules/playwright-core/lib/vite" ] ||
+  fail "Playwright developer-tool frontends were not pruned"
+[ ! -d "$EXTRACTED/usr/lib/perchance/node_modules/ua-parser-js/dist" ] ||
+  fail "unused UA parser distribution assets were not pruned"
+[ ! -f "$EXTRACTED/usr/lib/perchance/node_modules/xml2js/lib/xml2js.bc.js" ] ||
+  fail "unused xml2js bytecode artifact was not pruned"
+[ -z "$(find "$EXTRACTED/usr/lib/perchance/node_modules" -type f \
+  \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) \
+  -print -quit)" ] || fail "source maps or TypeScript declarations remain"
 [ -n "$(find "$EXTRACTED/usr/lib/camoufox/fonts" -type f -print -quit)" ] ||
   fail "embedded Camoufox fonts are missing"
 [ -n "$(find "$EXTRACTED/usr/lib/camoufox/addons" -type f -print -quit)" ] ||

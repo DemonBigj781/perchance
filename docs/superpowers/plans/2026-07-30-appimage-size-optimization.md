@@ -65,16 +65,16 @@ AppImage type 2, SquashFS, `strace`, Podman.
 - Modify: `tests/appimageFiles.test.ts`
 - Update: `docs/appimage-size-audit.md`
 
-- [ ] Add failing tests for the exact staging cleanup rules.
+- [x] Add failing tests for the exact staging cleanup rules.
 - [x] Retain the active `better-sqlite3` WebGL database runtime, but remove its
   seven non-target prebuilds, SQLite/C++ compilation sources, and build-only
   `node-addon-api` dependency.
-- [ ] Remove source maps, TypeScript declarations, tests, examples,
+- [x] Remove source maps, TypeScript declarations, tests, examples,
   documentation, npm metadata caches, and Python/node-gyp sources that are not
   imported at runtime.
-- [ ] Preserve package manifests, licenses, Camoufox data files, Playwright
+- [x] Preserve package manifests, licenses, Camoufox data files, Playwright
   runtime JavaScript, the x86_64 Impit native module, and all browser payload.
-- [ ] Rebuild, audit, verify, and run the live smoke test.
+- [x] Rebuild, audit, verify, and run the live smoke test.
 - [ ] Commit only if all behavior remains valid.
 
 ### Task 4: Optimize SquashFS Compression

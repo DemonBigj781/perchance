@@ -32,7 +32,7 @@ case "$RUN_ROOT" in
   *) fail "refusing to remove unexpected smoke path: $RUN_ROOT" ;;
 esac
 rm -rf "$RUN_ROOT"
-mkdir -p "$RUN_ROOT/home" "$RUN_ROOT/output"
+mkdir -p "$RUN_ROOT/home" "$RUN_ROOT/output" "$RUN_ROOT/tmp"
 
 OUTPUT="$RUN_ROOT/output/generated-image.bin"
 STDOUT="$RUN_ROOT/stdout.log"
@@ -40,6 +40,19 @@ STDERR="$RUN_ROOT/stderr.log"
 TRACE="$RUN_ROOT/execve.log"
 BEFORE="$RUN_ROOT/camoufox-before.txt"
 AFTER="$RUN_ROOT/camoufox-after.txt"
+
+cleanup() {
+  rm -f "$OUTPUT"
+  if [ -d "$RUN_ROOT/tmp" ]; then
+    find "$RUN_ROOT/tmp" -mindepth 1 -maxdepth 1 \
+      -type d -name 'appimage_extracted_*' -exec rm -rf {} +
+  fi
+}
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 {
   pgrep -x camoufox 2>/dev/null || true
@@ -51,6 +64,7 @@ case "$MODE" in
     if ! timeout "$TIMEOUT_SECONDS" strace -f -qq -s 4096 \
       -e trace=execve -o "$TRACE" \
       env -i HOME="$RUN_ROOT/home" PATH=/usr/bin:/bin \
+      TMPDIR="$RUN_ROOT/tmp" \
       APPIMAGE_EXTRACT_AND_RUN=1 \
       "$APPIMAGE" image "$PROMPT" --output "$OUTPUT" \
       >"$STDOUT" 2>"$STDERR"; then
@@ -62,6 +76,7 @@ case "$MODE" in
     if ! timeout "$TIMEOUT_SECONDS" strace -f -qq -s 4096 \
       -e trace=execve -o "$TRACE" \
       env -i HOME="$RUN_ROOT/home" PATH=/usr/bin:/bin \
+      TMPDIR="$RUN_ROOT/tmp" \
       "$APPIMAGE" image "$PROMPT" --output "$OUTPUT" \
       >"$STDOUT" 2>"$STDERR"; then
       cat "$STDERR" >&2
@@ -107,3 +122,5 @@ printf 'image_bytes=%s\n' "$(stat -c %s "$OUTPUT")"
 printf 'image_type=%s\n' "$IMAGE_TYPE"
 printf 'camoufox_processes_after=%s\n' "$(wc -l <"$AFTER" | tr -d ' ')"
 printf 'trace=%s\n' "$TRACE"
+rm -f "$OUTPUT"
+printf 'image_removed=true\n'
