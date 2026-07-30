@@ -95,7 +95,7 @@ with a link would not materially reduce the AppImage.
 | Component | Uncompressed bytes | Initial finding |
 | --- | ---: | --- |
 | Playwright Core | 9,311,756 | Runtime required; metadata may be pruned |
-| `better-sqlite3` | 27,353,961 | No Camoufox JS runtime reference found |
+| `better-sqlite3` | 27,353,961 | Required; prune non-target build files |
 | Impit x86_64 native module | 8,594,352 | Required by static Camoufox imports |
 | Compiled Perchance source | 48,394 | Retain |
 
@@ -106,9 +106,11 @@ browser, not another browser engine.
 
 The `better-sqlite3` package contains eight native prebuilds for Linux, macOS,
 Windows, glibc, musl, x86_64, and ARM64 plus 10.2 MB of SQLite and C++ source.
-Static searches found no import or require of this package anywhere in
-Camoufox JS runtime code. It is a candidate for removal followed by full live
-validation.
+Dependency tracing found that Camoufox dynamically imports `better-sqlite3`
+when sampling its bundled WebGL fingerprint database under Node.js. The package
+must remain, but this glibc x86_64 AppImage needs only `linux-x64.node`, the JS
+loader, manifest, and license. Other platform binaries, compilation sources,
+headers, and `node-addon-api` are build-time payload.
 
 ## Python, Development, and Metadata Inventory
 
@@ -149,11 +151,11 @@ working baseline and will be tested in a clean compatible Linux container.
 
 ## Planned Safe Reductions
 
-The first reduction tranche will remove only build-time Node components after
-production dependencies are installed. The second tranche will remove the
-unreferenced `better-sqlite3` dependency and runtime-unneeded package metadata.
-The final tranche will benchmark stronger SquashFS compression without altering
-browser bytes.
+The first reduction tranche removes only build-time Node components after
+production dependencies are installed. The second tranche retains the active
+`better-sqlite3` runtime while removing its non-x86_64 prebuilds, compilation
+sources, and runtime-unneeded package metadata. The final tranche benchmarks
+stronger SquashFS compression without altering browser bytes.
 
 Camoufox fonts, addons, GeoIP data, codecs, TLS libraries, browser archives,
 fingerprint data, WebGL data, fontconfig, dictionaries, hyphenation, and native
@@ -187,3 +189,38 @@ Verification passed: 52 unit tests, checksum and extracted-runtime checks,
 embedded-browser path and version checks, immutable browser-update behavior,
 live image generation, generated-image validation, process cleanup, and
 `strace` provenance showing only the embedded Node.js and Camoufox executables.
+
+## Reduction 2: Native Runtime Pruning
+
+Dependency tracing corrected the initial assumption about `better-sqlite3`:
+Camoufox imports it when reading `webgl_data.db` under Node.js. The active
+runtime was retained and explicitly exercised during build and verification.
+
+Removed:
+
+- Seven `better-sqlite3` binaries for ARM64, musl, macOS, and Windows.
+- The vendored 9.5 MB SQLite amalgamation and supporting headers.
+- `better-sqlite3` C++ source, GYP files, download script, and build metadata.
+- The build-only `node-addon-api` package.
+- Debug and symbol sections from the official Node.js executable.
+- Debug and symbol sections from `better-sqlite3`'s Linux x86_64 module.
+
+Retained:
+
+- `better-sqlite3/prebuilds/linux-x64.node` for glibc x86_64 distributions,
+  including Debian and Fedora derivatives.
+- The complete JS loader and database API used by Camoufox.
+- `webgl_data.db` and all WebGL fingerprint sampling behavior.
+- The x86_64 glibc Impit module used by Camoufox networking.
+
+| Measurement | Before | After | Saved |
+| --- | ---: | ---: | ---: |
+| Uncompressed AppDir | 1,549,004,665 | 1,505,358,106 | 43,646,559 |
+| Complete AppImage | 738,433,528 | 724,949,496 | 13,484,032 |
+| Node runtime tree | 123,814,422 | 105,811,350 | 18,003,072 |
+| `better-sqlite3` | 27,353,961 | 2,127,756 | 25,226,205 |
+
+Verification passed: direct `better-sqlite3` loading, an actual Camoufox WebGL
+fingerprint query against the bundled database, all 52 unit tests, extracted
+runtime verification, and live Perchance image generation. The generated JPEG
+was 87,038 bytes and no Camoufox process remained afterward.

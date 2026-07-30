@@ -53,6 +53,10 @@ EXTRACTED="$VERIFY_ROOT/squashfs-root"
   fail "embedded Camoufox executable is missing"
 [ -f "$EXTRACTED/usr/lib/camoufox/version.json" ] ||
   fail "embedded Camoufox version metadata is missing"
+[ -f "$EXTRACTED/usr/lib/perchance/node_modules/better-sqlite3/prebuilds/linux-x64.node" ] ||
+  fail "better-sqlite3 Linux x86_64 runtime is missing"
+[ ! -d "$EXTRACTED/usr/lib/perchance/node_modules/node-addon-api" ] ||
+  fail "build-only node-addon-api package was not pruned"
 [ -n "$(find "$EXTRACTED/usr/lib/camoufox/fonts" -type f -print -quit)" ] ||
   fail "embedded Camoufox fonts are missing"
 [ -n "$(find "$EXTRACTED/usr/lib/camoufox/addons" -type f -print -quit)" ] ||
@@ -79,9 +83,12 @@ printf '%s\n' "$FETCH_OUTPUT" | grep -F 'immutable AppImage' >/dev/null ||
     const require = createRequire(new URL("./package.json", import.meta.url));
     await import("./dist/src/index.js");
     await import("camoufox-js");
+    const webgl = await import("./node_modules/camoufox-js/dist/webgl/sample.js");
     const Database = require("better-sqlite3");
     const database = new Database(":memory:");
     database.close();
+    const fingerprint = await webgl.sampleWebGL("win");
+    if (!fingerprint["webGl:renderer"]) throw new Error("WebGL sampling failed");
   '
 )
 

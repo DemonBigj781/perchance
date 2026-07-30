@@ -91,6 +91,8 @@ describe("AppImage runtime files", () => {
     const buildScript = await readFile(buildScriptPath, "utf8");
     const temporaryRoot = await mkdtemp(join(tmpdir(), "perchance-prune-"));
     const nodeRoot = join(temporaryRoot, "usr/lib/node");
+    const modulesRoot = join(temporaryRoot, "usr/lib/perchance/node_modules");
+    const sqliteRoot = join(modulesRoot, "better-sqlite3");
 
     try {
       assert.match(buildScript, /prune-appimage-runtime\.sh/);
@@ -98,6 +100,10 @@ describe("AppImage runtime files", () => {
       await mkdir(join(nodeRoot, "include/node"), { recursive: true });
       await mkdir(join(nodeRoot, "lib/node_modules/npm"), { recursive: true });
       await mkdir(join(nodeRoot, "share/doc"), { recursive: true });
+      await mkdir(join(sqliteRoot, "prebuilds"), { recursive: true });
+      await mkdir(join(sqliteRoot, "deps/sqlite3"), { recursive: true });
+      await mkdir(join(sqliteRoot, "src"), { recursive: true });
+      await mkdir(join(modulesRoot, "node-addon-api"), { recursive: true });
       await writeFile(join(nodeRoot, "bin/node"), "node-runtime");
       await writeFile(join(nodeRoot, "bin/npm"), "npm-shim");
       await writeFile(join(nodeRoot, "bin/corepack"), "corepack-shim");
@@ -106,6 +112,16 @@ describe("AppImage runtime files", () => {
       await writeFile(join(nodeRoot, "share/doc/readme"), "documentation");
       await writeFile(join(nodeRoot, "LICENSE"), "license");
       await writeFile(join(nodeRoot, "README.md"), "readme");
+      await writeFile(join(sqliteRoot, "prebuilds/linux-x64.node"), "linux-x64");
+      await writeFile(join(sqliteRoot, "prebuilds/linux-arm64.node"), "linux-arm64");
+      await writeFile(join(sqliteRoot, "prebuilds/linuxmusl-x64.node"), "musl-x64");
+      await writeFile(join(sqliteRoot, "prebuilds/darwin-x64.node"), "darwin-x64");
+      await writeFile(join(sqliteRoot, "prebuilds/win32-x64.node"), "win32-x64");
+      await writeFile(join(sqliteRoot, "deps/sqlite3/sqlite3.c"), "sqlite source");
+      await writeFile(join(sqliteRoot, "src/addon.cpp"), "addon source");
+      await writeFile(join(sqliteRoot, "binding.gyp"), "build metadata");
+      await writeFile(join(sqliteRoot, "README.md"), "documentation");
+      await writeFile(join(modulesRoot, "node-addon-api/index.js"), "build helper");
       await chmod(join(nodeRoot, "bin/node"), 0o755);
       await chmod(pruneScriptPath, 0o755);
 
@@ -119,6 +135,31 @@ describe("AppImage runtime files", () => {
       assert.equal(await pathExists(join(nodeRoot, "lib")), false);
       assert.equal(await pathExists(join(nodeRoot, "share")), false);
       assert.equal(await pathExists(join(nodeRoot, "README.md")), false);
+      assert.equal(
+        await pathExists(join(sqliteRoot, "prebuilds/linux-x64.node")),
+        true,
+      );
+      assert.equal(
+        await pathExists(join(sqliteRoot, "prebuilds/linux-arm64.node")),
+        false,
+      );
+      assert.equal(
+        await pathExists(join(sqliteRoot, "prebuilds/linuxmusl-x64.node")),
+        false,
+      );
+      assert.equal(
+        await pathExists(join(sqliteRoot, "prebuilds/darwin-x64.node")),
+        false,
+      );
+      assert.equal(
+        await pathExists(join(sqliteRoot, "prebuilds/win32-x64.node")),
+        false,
+      );
+      assert.equal(await pathExists(join(sqliteRoot, "deps")), false);
+      assert.equal(await pathExists(join(sqliteRoot, "src")), false);
+      assert.equal(await pathExists(join(sqliteRoot, "binding.gyp")), false);
+      assert.equal(await pathExists(join(sqliteRoot, "README.md")), false);
+      assert.equal(await pathExists(join(modulesRoot, "node-addon-api")), false);
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true });
     }

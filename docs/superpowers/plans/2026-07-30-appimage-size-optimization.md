@@ -66,8 +66,9 @@ AppImage type 2, SquashFS, `strace`, Podman.
 - Update: `docs/appimage-size-audit.md`
 
 - [ ] Add failing tests for the exact staging cleanup rules.
-- [ ] Remove `better-sqlite3`, which has no runtime reference in Camoufox JS,
-  along with its eight cross-platform prebuilds and SQLite source tree.
+- [x] Retain the active `better-sqlite3` WebGL database runtime, but remove its
+  seven non-target prebuilds, SQLite/C++ compilation sources, and build-only
+  `node-addon-api` dependency.
 - [ ] Remove source maps, TypeScript declarations, tests, examples,
   documentation, npm metadata caches, and Python/node-gyp sources that are not
   imported at runtime.

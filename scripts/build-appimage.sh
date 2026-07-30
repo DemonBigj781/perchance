@@ -71,7 +71,7 @@ verify_elf_dependencies() {
   fi
 }
 
-for command_name in curl find grep ldd node npm sha256sum tar; do
+for command_name in curl file find grep ldd node npm sha256sum strip tar; do
   require_command "$command_name"
 done
 
@@ -171,6 +171,8 @@ verify_elf_dependencies \
 verify_elf_dependencies \
   "$APPDIR/usr/lib/camoufox/camoufox-bin" \
   "$APPDIR/usr/lib/camoufox"
+verify_elf_dependencies \
+  "$APP_HOME/node_modules/better-sqlite3/prebuilds/linux-x64.node"
 
 (
   cd "$APP_HOME"
@@ -179,12 +181,15 @@ verify_elf_dependencies \
     const require = createRequire(new URL("./package.json", import.meta.url));
     const api = await import("./dist/src/index.js");
     const camoufox = await import("camoufox-js");
+    const webgl = await import("./node_modules/camoufox-js/dist/webgl/sample.js");
     const Database = require("better-sqlite3");
     const database = new Database(":memory:");
     database.exec("select 1");
     database.close();
+    const fingerprint = await webgl.sampleWebGL("win");
     if (typeof api.ImageGenerator !== "function") throw new Error("Perchance import failed");
     if (typeof camoufox.Camoufox !== "function") throw new Error("Camoufox import failed");
+    if (!fingerprint["webGl:renderer"]) throw new Error("WebGL sampling failed");
   '
 )
 
