@@ -300,16 +300,24 @@ function addTextCommand(
         }
 
         const chunks: string[] = [];
+        let wroteText = false;
+        let endsWithLineBreak = false;
         for await (const chunk of generator.stream(prompt, generationOptions)) {
           if (options.json) {
             chunks.push(chunk);
           } else {
             dependencies.stdout(chunk);
+            if (chunk.length > 0) {
+              wroteText = true;
+              endsWithLineBreak = /[\r\n]$/.test(chunk);
+            }
           }
         }
 
         if (options.json) {
           dependencies.stdout(`${JSON.stringify({ text: chunks.join("") })}\n`);
+        } else if (wroteText && !endsWithLineBreak) {
+          dependencies.stdout("\n");
         }
       });
     });

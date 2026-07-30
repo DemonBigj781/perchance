@@ -300,7 +300,7 @@ describe("image command", () => {
 });
 
 describe("text command", () => {
-  it("streams generated text without adding a newline", async () => {
+  it("streams generated text and terminates console output", async () => {
     const dependencies = createFakeDependencies();
     dependencies.state.textChunks = ["hello", " world"];
 
@@ -315,7 +315,21 @@ describe("text command", () => {
       prompt: "greet me",
       options: { stopSequences: [] },
     }]);
-    assert.equal(dependencies.state.stdout, "hello world");
+    assert.equal(dependencies.state.stdout, "hello world\n");
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+  });
+
+  it("does not duplicate a generated trailing newline", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.textChunks = ["hello", " world\n"];
+
+    const status = await runCli(
+      ["node", "perchance", "text", "greet me"],
+      dependencies,
+    );
+
+    assert.equal(status, 0);
+    assert.equal(dependencies.state.stdout, "hello world\n");
     assert.equal(dependencies.state.browserCloseCalls, 1);
   });
 
