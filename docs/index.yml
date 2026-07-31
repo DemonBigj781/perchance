@@ -1,0 +1,17 @@
+# Documentation Index
+# Auto-updated by /spec-writer and /project-management skills
+
+specs:
+  - name: gallery-retrieval
+    path: superpowers/specs/2026-07-31-gallery-retrieval-design.md
+    description: Public Perchance gallery image and prompt retrieval
+    status: active
+
+changes:
+  # - id: "NNNN"
+  #   name: <change-name>
+  #   path: changes/NNNN-<change-name>.md
+  #   description: <one-line description>
+  #   spec: <spec-name>
+  #   status: draft | in-progress | complete
+  #   depends_on: []
