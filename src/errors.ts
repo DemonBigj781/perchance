@@ -29,3 +29,17 @@ export class RateLimitError extends PerchanceError {
     this.name = "RateLimitError";
   }
 }
+
+export class GalleryNotFoundError extends PerchanceError {
+  constructor(message: string) {
+    super(message);
+    this.name = "GalleryNotFoundError";
+  }
+}
+
+export class GalleryProtocolError extends PerchanceError {
+  constructor(message: string) {
+    super(message);
+    this.name = "GalleryProtocolError";
+  }
+}

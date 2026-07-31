@@ -56,3 +56,39 @@ export interface GenerateImageRequestBody {
   resolution: string;
   guidanceScale: number;
 }
+
+export type GallerySort = "recent" | "top" | "trending";
+
+export interface GalleryEntry {
+  imageId: string;
+  imageUrl: string;
+  prompt: string;
+  negativePrompt?: string;
+  seed?: number;
+  guidanceScale?: number;
+  width?: number;
+  height?: number;
+  score?: number;
+  createdAt?: string;
+  channel: string;
+  subChannel: string;
+}
+
+export interface GalleryPage {
+  entries: GalleryEntry[];
+  nextCursor?: string;
+}
+
+export interface GalleryListOptions {
+  channel?: string;
+  limit?: number;
+  cursor?: string;
+  sort?: GallerySort;
+  timeRange?: string;
+  contentFilter?: string;
+}
+
+export interface GalleryGetOptions {
+  channel?: string;
+  contentFilter?: string;
+}
