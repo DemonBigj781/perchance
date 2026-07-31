@@ -247,6 +247,7 @@ describe("AppImage runtime files", () => {
     assert.match(buildScript, /-b 1M/);
     assert.match(buildScript, /-Xdict-size 100%/);
     assert.match(buildScript, /-Xbcj x86/);
+    assert.match(buildScript, /-processors 1/);
     assert.match(buildScript, /-all-root/);
     assert.match(buildScript, /AppImageKit\/releases\/download\/continuous/);
   });

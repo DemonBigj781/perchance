@@ -6,7 +6,11 @@ import {
   GalleryProtocolError,
 } from "../src/errors.js";
 import { GalleryClient } from "../src/galleryClient.js";
-import type { BrowserContext, BrowserPage } from "../src/generator.js";
+import type {
+  BrowserContext,
+  BrowserFrame,
+  BrowserPage,
+} from "../src/generator.js";
 import { decodeGalleryCursor } from "../src/internal/galleryProtocol.js";
 import type { GalleryEntry } from "../src/types.js";
 
@@ -34,6 +38,9 @@ function makeGalleryPage(config: FakeGalleryPageConfig): BrowserPage & {
   closes: number;
   evaluateArguments: unknown[];
 } {
+  let activated = false;
+  let galleryFrameUrl =
+    "https://image-generation.perchance.org/gallery?sort=trending";
   const page: BrowserPage & {
     gotos: string[];
     closes: number;
@@ -48,28 +55,11 @@ function makeGalleryPage(config: FakeGalleryPageConfig): BrowserPage & {
     async content() {
       return "";
     },
-    async evaluate(_fn: unknown, argument: unknown) {
-      page.evaluateArguments.push(argument);
-      if (
-        typeof argument === "object" &&
-        argument !== null &&
-        "startSkip" in argument
-      ) {
-        if (!config.feed) throw new Error("missing feed fixture");
-        return config.feed as never;
-      }
-      if (typeof argument === "string" && argument.includes("/docs/")) {
-        if (!config.document) throw new Error("missing document fixture");
-        return config.document as never;
-      }
-      if (typeof argument === "string" && argument.includes("/image/")) {
-        if (!config.image) throw new Error("missing image fixture");
-        return config.image as never;
-      }
-      throw new Error(`unexpected browser argument: ${String(argument)}`);
+    async evaluate() {
+      throw new Error("gallery operations must run in the embedded frame");
     },
     frames() {
-      return [];
+      return [generatorFrame, ...(activated ? [galleryFrame] : [])];
     },
     url(): string {
       return page.gotos.at(-1) ?? "about:blank";
@@ -80,6 +70,55 @@ function makeGalleryPage(config: FakeGalleryPageConfig): BrowserPage & {
       page.closes += 1;
     },
     async exposeFunction() {},
+  };
+
+  const generatorFrame: BrowserFrame = {
+    url() {
+      return "https://generator-id.perchance.org/ai-text-to-image-generator";
+    },
+    async evaluate<T = unknown>() {
+      activated = true;
+      return true as T;
+    },
+  };
+
+  const galleryFrame: BrowserFrame = {
+    url() {
+      return galleryFrameUrl;
+    },
+    async evaluate<T = unknown>(
+      _fn: string | ((...args: unknown[]) => T | Promise<T>),
+      ...args: unknown[]
+    ) {
+      const argument = args[0];
+      if (argument === undefined) return true as T;
+      if (
+        typeof argument === "string" &&
+        argument.startsWith("https://image-generation.perchance.org/gallery?")
+      ) {
+        galleryFrameUrl = argument;
+        return undefined as T;
+      }
+
+      page.evaluateArguments.push(argument);
+      if (
+        typeof argument === "object" &&
+        argument !== null &&
+        "startSkip" in argument
+      ) {
+        if (!config.feed) throw new Error("missing feed fixture");
+        return config.feed as T;
+      }
+      if (typeof argument === "string" && argument.includes("/docs/")) {
+        if (!config.document) throw new Error("missing document fixture");
+        return config.document as T;
+      }
+      if (typeof argument === "string" && argument.includes("/image/")) {
+        if (!config.image) throw new Error("missing image fixture");
+        return config.image as T;
+      }
+      throw new Error(`unexpected browser argument: ${String(argument)}`);
+    },
   };
   return page;
 }
@@ -139,6 +178,70 @@ describe("GalleryClient", () => {
     assert.equal(launches, 0);
   });
 
+  it("activates the official embedded gallery before reading the feed", async () => {
+    const feed = {
+      records: [{ imageId, imageUrl, prompt: "gallery prompt" }],
+      consumed: 1,
+      hasMore: false,
+    };
+    const page = makeGalleryPage({ feed });
+    let activated = 0;
+    let waits = 0;
+    let galleryFrameUrl =
+      "https://image-generation.perchance.org/gallery?sort=trending";
+    const generatorFrame: BrowserFrame = {
+      url() {
+        return "https://generator-id.perchance.org/ai-text-to-image-generator";
+      },
+      async evaluate<T = unknown>() {
+        activated += 1;
+        return true as T;
+      },
+    };
+    const galleryFrame: BrowserFrame = {
+      url() {
+        return galleryFrameUrl;
+      },
+      async evaluate<T = unknown>(
+        _fn: string | ((...args: unknown[]) => T | Promise<T>),
+        ...args: unknown[]
+      ) {
+        const argument = args[0];
+        if (
+          typeof argument === "string" &&
+          argument.startsWith("https://image-generation.perchance.org/gallery?")
+        ) {
+          galleryFrameUrl = argument;
+          return undefined as T;
+        }
+        if (
+          typeof argument === "object" &&
+          argument !== null &&
+          "startSkip" in argument
+        ) {
+          return feed as T;
+        }
+        return true as T;
+      },
+    };
+    page.frames = () => [
+      generatorFrame,
+      ...(activated > 0 && waits >= 2 ? [galleryFrame] : []),
+    ];
+    page.waitForTimeout = async () => {
+      waits += 1;
+    };
+    const client = new GalleryClient({
+      browserContext: contextWithPage(page),
+    });
+
+    await client.list({ limit: 1 });
+
+    assert.equal(page.gotos[0], "https://perchance.org/ai-text-to-image-generator");
+    assert.equal(activated, 1);
+    assert.match(galleryFrameUrl, /sort=recent/);
+  });
+
   it("lists normalized entries and returns an opaque next cursor", async () => {
     const page = makeGalleryPage({
       feed: {
@@ -154,7 +257,7 @@ describe("GalleryClient", () => {
 
     assert.equal(result.entries[0].prompt, "gallery prompt");
     assert.equal(decodeGalleryCursor(result.nextCursor!), 1);
-    assert.match(page.gotos[0], /channel=ai-text-to-image-generator/);
+    assert.equal(page.gotos[0], "https://perchance.org/ai-text-to-image-generator");
     assert.equal(page.closes, 1);
     await client.close();
     assert.equal(context.closes, 0);

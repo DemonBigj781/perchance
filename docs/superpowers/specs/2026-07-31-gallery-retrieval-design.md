@@ -1,7 +1,7 @@
 # Public Gallery Retrieval Design
 
 Date: 2026-07-31
-Status: Approved, not yet implemented
+Status: Implemented and verified
 
 ## Objective
 
@@ -25,9 +25,11 @@ The official Perchance text-to-image plugin constructs public gallery URLs at
 `https://image-generation.perchance.org/gallery`. The gallery accepts a
 generator channel, public subchannel, sort order, time range, and content
 filter. Direct non-browser requests are currently challenged by Cloudflare.
-Gallery retrieval therefore MUST execute through Camoufox and consume the
-structured metadata exposed by the official gallery markup and item document
-endpoint rather than infer values from rendered text or layout.
+Top-level Camoufox navigation to the gallery URL redirects to the generator;
+the working official path is to open the generator and activate its embedded
+public gallery frame. Gallery retrieval therefore MUST use that embedded frame
+and consume the structured metadata exposed by the official gallery markup and
+item document endpoint rather than infer values from rendered text or layout.
 
 ## Scope
 
@@ -159,10 +161,14 @@ exact filename and otherwise treat it as a directory.
 ## Browser-Backed Transport
 
 The transport MUST use Camoufox to establish a browser session accepted by the
-official gallery service. Feed retrieval MUST navigate to the official gallery
-page and read only the structured `.imageCtn` data attributes and image source
-used by the gallery runtime. It MUST NOT infer metadata from card text,
-position, styling, or other visual presentation.
+official gallery service. It MUST open the official
+`perchance.org/ai-text-to-image-generator` page, wait for the generator frame,
+activate the generator's public comments-and-gallery control, and wait for the
+resulting `image-generation.perchance.org/gallery` frame. It MUST then navigate
+that embedded frame to the requested channel and filters. Feed retrieval MUST
+read only the structured `.imageCtn` data attributes and image source used by
+the gallery runtime. It MUST NOT infer metadata from card text, position,
+styling, or other visual presentation.
 
 Additional feed pages MUST use the gallery runtime's same-origin
 `imageElementsHtmlOnly=true` and `skip=<offset>` request. Exact item lookup
@@ -188,13 +194,14 @@ Given valid list options, the client MUST:
 
 1. Validate options before launching a browser.
 2. Open or reuse a Camoufox context.
-3. Navigate to the official gallery URL with the requested channel and filters.
-4. Read the initial structured image elements, or request the supplied `skip`
+3. Open the official generator and activate its embedded public gallery.
+4. Navigate the embedded gallery frame to the requested channel and filters.
+5. Read the initial structured image elements, or request the supplied `skip`
    offset through `imageElementsHtmlOnly=true`.
-5. Request additional structured fragments only until the limit is satisfied or
+6. Request additional structured fragments only until the limit is satisfied or
    the upstream page is exhausted.
-6. Normalize no more than the requested number of entries.
-7. Return the normalized page and an opaque cursor encoding the next `skip`
+7. Normalize no more than the requested number of entries.
+8. Return the normalized page and an opaque cursor encoding the next `skip`
    offset when another upstream page may exist.
 
 When a cursor is supplied, it MUST be decoded only by the gallery adapter and
@@ -344,3 +351,6 @@ at least one public `g`-filtered gallery entry with a nonempty prompt.
 - 2026-07-31: Initial approved design for public gallery retrieval.
 - 2026-07-31: Corrected transport details after live protocol inspection.
 - 2026-07-31: Clarified paginated CLI list output as a gallery-page object.
+- 2026-07-31: Switched transport to the verified embedded gallery frame path.
+- 2026-07-31: Marked implemented after unit, live retrieval, download, and
+  AppImage verification completed successfully.

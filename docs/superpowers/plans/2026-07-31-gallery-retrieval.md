@@ -8,6 +8,12 @@
 
 **Architecture:** Keep upstream details behind a focused browser adapter. `GalleryClient` owns or reuses one Camoufox context, validates all caller input before launch, navigates the official gallery for feed markup, uses the gallery runtime's `skip` fragments for pagination, and requests exact metadata from `aigc.uploads.dev/docs/<id>.json`. Pure protocol helpers validate and normalize every boundary before public types or filesystem writes are produced.
 
+**Verified transport correction:** Live Camoufox testing showed that top-level
+gallery navigation redirects to the generator. Execution therefore opens the
+official generator, activates its comments-and-gallery control, waits for the
+embedded `image-generation.perchance.org/gallery` frame, and navigates that
+frame to the requested feed URL before extraction or document/image fetches.
+
 **Tech Stack:** TypeScript, Node.js 22, Camoufox/Playwright browser adapter, Commander, Node test runner.
 
 ---

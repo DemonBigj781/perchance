@@ -19,7 +19,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ImageGenerator, launchCamoufox } from "../src/index.js";
+import { GalleryClient, ImageGenerator, launchCamoufox } from "../src/index.js";
 import { existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -129,3 +129,24 @@ describe("E2E: ImageGenerator", { skip: !SHOULD_RUN }, () => {
     assert.ok(true, "close() completed without error");
   });
 });
+
+if (SHOULD_RUN) {
+  describe("E2E: GalleryClient", () => {
+    it("retrieves one public g-filtered entry", { timeout: 120_000 }, async () => {
+      const gallery = new GalleryClient();
+      try {
+        const page = await gallery.list({ limit: 1, contentFilter: "g" });
+
+        assert.equal(page.entries.length, 1);
+        assert.ok(page.entries[0].imageId);
+        assert.ok(page.entries[0].prompt.trim().length > 0);
+        assert.match(
+          page.entries[0].imageUrl,
+          /^https:\/\/aigc\.uploads\.dev\/image\//,
+        );
+      } finally {
+        await gallery.close();
+      }
+    });
+  });
+}

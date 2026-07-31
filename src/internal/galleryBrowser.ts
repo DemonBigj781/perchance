@@ -1,5 +1,11 @@
-import type { BrowserPage } from "../generator.js";
 import { GALLERY_DOCUMENT_ORIGIN } from "./galleryProtocol.js";
+
+interface BrowserEvaluator {
+  evaluate<T = unknown>(
+    fn: string | ((...args: any[]) => T | Promise<T>),
+    ...args: any[]
+  ): Promise<T>;
+}
 
 export interface RawGalleryFeedPage {
   records: unknown[];
@@ -22,7 +28,7 @@ export interface BrowserImageResult {
 }
 
 export async function readGalleryFeed(
-  page: BrowserPage,
+  page: BrowserEvaluator,
   request: { startSkip: number; limit: number },
 ): Promise<RawGalleryFeedPage> {
   return await page.evaluate<RawGalleryFeedPage>(
@@ -123,7 +129,7 @@ export async function readGalleryFeed(
 }
 
 export async function fetchGalleryDocument(
-  page: BrowserPage,
+  page: BrowserEvaluator,
   imageId: string,
 ): Promise<BrowserFetchResult> {
   const url = `${GALLERY_DOCUMENT_ORIGIN}/docs/${imageId}.json`;
@@ -154,7 +160,7 @@ export async function fetchGalleryDocument(
 }
 
 export async function fetchGalleryImage(
-  page: BrowserPage,
+  page: BrowserEvaluator,
   imageUrl: string,
 ): Promise<BrowserImageResult> {
   return await page.evaluate<BrowserImageResult>(

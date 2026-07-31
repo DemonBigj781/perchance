@@ -201,7 +201,7 @@ rm -f "$OUTPUT" "$CHECKSUM" "$SQUASHFS"
 printf 'Packaging %s...\n' "$OUTPUT_NAME"
 SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
   mksquashfs "$APPDIR" "$SQUASHFS" -noappend -comp xz -b 1M \
-  -Xdict-size 100% -Xbcj x86 -all-root
+  -Xdict-size 100% -Xbcj x86 -processors 1 -all-root
 cat "$RUNTIME_DOWNLOAD" "$SQUASHFS" >"$OUTPUT"
 rm -f "$SQUASHFS"
 chmod 755 "$OUTPUT"

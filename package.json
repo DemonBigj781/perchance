@@ -1,7 +1,7 @@
 {
   "name": "perchance",
   "version": "1.0.0",
-  "description": "TypeScript Perchance API — AI image & text generation with Turnstile bypass",
+  "description": "TypeScript Perchance API — image, text, and public gallery access through Camoufox",
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -30,14 +30,15 @@
     "build": "tsc",
     "prepack": "npm run build",
     "smoke:appimage": "sh scripts/smoke-appimage.sh",
-    "test": "tsc && node --test dist/tests/appimageFiles.test.js dist/tests/camoufox.test.js dist/tests/cli.test.js dist/tests/errors.test.js dist/tests/generator.test.js dist/tests/imageGenerator.test.js dist/tests/package.test.js dist/tests/textGenerator.test.js dist/tests/utils.test.js",
-    "test:integration": "PERCHANCE_E2E=1 tsc && node --test dist/tests/integration.test.js",
+    "test": "tsc && node --test --test-concurrency=1 dist/tests/appimageFiles.test.js dist/tests/camoufox.test.js dist/tests/cli.test.js dist/tests/errors.test.js dist/tests/galleryBrowser.test.js dist/tests/galleryClient.test.js dist/tests/galleryProtocol.test.js dist/tests/generator.test.js dist/tests/imageGenerator.test.js dist/tests/package.test.js dist/tests/textGenerator.test.js dist/tests/utils.test.js",
+    "test:integration": "PERCHANCE_E2E=1 tsc && node --test --test-concurrency=1 dist/tests/integration.test.js",
     "verify:appimage": "sh scripts/verify-appimage.sh"
   },
   "keywords": [
     "perchance",
     "ai",
     "image-generation",
+    "gallery",
     "text-generation",
     "turnstile-bypass"
   ],

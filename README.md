@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD013 MD030 -->
+
 # perchance — fork by Nova
 
 A fork of [eeemoon/perchance](https://github.com/eeemoon/perchance) with autonomous Cloudflare Turnstile bypass via [Camoufox-JS](https://github.com/apify/camoufox-js/).
@@ -52,8 +54,8 @@ Install the command for the current user from this checkout:
 npm install --global .
 ```
 
-The CLI runs Camoufox headlessly by default. Add `--visible` to an image or
-text command when you need to inspect the browser window.
+The CLI runs Camoufox headlessly by default. Add `--visible` to an image, text,
+or gallery command when you need to inspect the browser window.
 
 Generate an image with default settings:
 
@@ -87,6 +89,29 @@ Text output can be redirected or piped without CLI status text being mixed
 into stdout. Use `--json` for `{ "text": "..." }` output. Other text options
 include `--start-with`, repeatable `--stop`, and `--timeout`.
 
+Retrieve public gallery images and their generation prompts:
+
+```bash
+perchance gallery list --limit 20
+perchance gallery list --sort top --time-range 1-month
+perchance gallery get <64-character-image-id>
+```
+
+Gallery retrieval is read-only and defaults to the public
+`ai-text-to-image-generator` channel with the `g` content filter. List output
+is one JSON object with `entries` and an optional `nextCursor`; pass that cursor
+back with `--cursor` to continue the feed. Item lookup accepts an image ID or a
+supported Perchance gallery/image URL.
+
+Use `--download` to save the returned image or images. Without `--output`, files
+are written beneath `gallery_images/`. Existing generated names are preserved
+by appending `-2`, `-3`, and so on instead of overwriting them.
+
+```bash
+perchance gallery list --limit 4 --download --output ./gallery_images
+perchance gallery get <64-character-image-id> --download --output selected.jpeg
+```
+
 Manage the Camoufox installation used by the CLI:
 
 ```bash
@@ -119,10 +144,10 @@ release/Perchance-1.0.0-x86_64.AppImage
 release/Perchance-1.0.0-x86_64.AppImage.sha256
 ```
 
-Running the AppImage without arguments displays CLI help. Image and text
-commands work the same as the globally installed command. The browser payload
-inside an AppImage is immutable, so `browser path` and `browser version` are
-available while `browser fetch` instructs you to replace or rebuild the
+Running the AppImage without arguments displays CLI help. Image, text, and
+gallery commands work the same as the globally installed command. The browser
+payload inside an AppImage is immutable, so `browser path` and `browser version`
+are available while `browser fetch` instructs you to replace or rebuild the
 AppImage.
 
 Verify an existing artifact with:
@@ -172,6 +197,38 @@ async function main() {
 main();
 ```
 
+### Gallery retrieval
+
+`GalleryClient` launches and owns Camoufox by default. Pass an existing browser
+context to reuse a caller-owned session; `close()` never closes an injected
+context.
+
+```typescript
+import { GalleryClient } from "perchance";
+
+const gallery = new GalleryClient();
+try {
+    const page = await gallery.list({ limit: 10, contentFilter: "g" });
+    for (const entry of page.entries) {
+        console.log(entry.imageId, entry.prompt, entry.imageUrl);
+    }
+
+    if (page.entries[0]) {
+        const exact = await gallery.get(page.entries[0].imageId);
+        await gallery.download(
+            exact,
+            `gallery_images/${exact.imageId}.jpeg`,
+        );
+    }
+} finally {
+    await gallery.close();
+}
+```
+
+Feed entries expose normalized prompt, image URL, channel, and available
+generation metadata. Exact item lookup uses the gallery's structured metadata
+document rather than scanning feed pages.
+
 ## Running Tests
 
 ### Unit Tests (fast)
@@ -186,7 +243,7 @@ These tests launch a real browser and interact with `perchance.org`.
 They are skipped by default. To run them:
 
 ```bash
-PERCHANCE_E2E=1 npm run test:integration
+npm run test:integration
 ```
 
 These tests can take 30-90 seconds each due to browser automation and Cloudflare challenges.
