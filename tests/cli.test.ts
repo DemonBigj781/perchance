@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { BrowserContext } from "../src/generator.js";
+import { encodeGalleryCursor } from "../src/internal/galleryProtocol.js";
 import { runCli, type CliDependencies } from "../src/cli/program.js";
 import type {
   GenerateImageOptions,
   GenerateTextOptions,
+  GalleryEntry,
+  GalleryGetOptions,
+  GalleryListOptions,
+  GalleryPage,
 } from "../src/types.js";
 
 interface FakeState {
@@ -27,9 +32,24 @@ interface FakeState {
   signalHandlers: Map<"SIGINT" | "SIGTERM", () => void>;
   terminatedSignals: Array<"SIGINT" | "SIGTERM">;
   imageGate?: Promise<void>;
+  galleryListCalls: GalleryListOptions[];
+  galleryGetCalls: Array<{ idOrUrl: string; options: GalleryGetOptions }>;
+  galleryDownloadCalls: Array<{ entry: GalleryEntry; destination: string }>;
+  galleryCloseCalls: number;
+  galleryPage: GalleryPage;
+  galleryEntry: GalleryEntry;
+  galleryError?: Error;
+  galleryDownloadError?: Error;
 }
 
 function createFakeDependencies(): CliDependencies & { state: FakeState } {
+  const galleryEntry: GalleryEntry = {
+    imageId: "d".repeat(64),
+    imageUrl: `https://aigc.uploads.dev/image/${"d".repeat(64)}.jpeg`,
+    prompt: "gallery prompt",
+    channel: "ai-text-to-image-generator",
+    subChannel: "public",
+  };
   const state: FakeState = {
     stdout: "",
     stderr: "",
@@ -46,6 +66,12 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
     immutableBundle: false,
     signalHandlers: new Map(),
     terminatedSignals: [],
+    galleryListCalls: [],
+    galleryGetCalls: [],
+    galleryDownloadCalls: [],
+    galleryCloseCalls: 0,
+    galleryPage: { entries: [galleryEntry], nextCursor: "next-cursor" },
+    galleryEntry,
   };
   const browser: BrowserContext = {
     async newPage() {
@@ -101,6 +127,28 @@ function createFakeDependencies(): CliDependencies & { state: FakeState } {
         },
       };
     },
+    createGalleryClient() {
+      return {
+        async list(options: GalleryListOptions) {
+          state.galleryListCalls.push(options);
+          if (state.galleryError) throw state.galleryError;
+          return state.galleryPage;
+        },
+        async get(idOrUrl: string, options: GalleryGetOptions) {
+          state.galleryGetCalls.push({ idOrUrl, options });
+          if (state.galleryError) throw state.galleryError;
+          return state.galleryEntry;
+        },
+        async download(entry: GalleryEntry, destination: string) {
+          state.galleryDownloadCalls.push({ entry, destination });
+          if (state.galleryDownloadError) throw state.galleryDownloadError;
+          return destination;
+        },
+        async close() {
+          state.galleryCloseCalls += 1;
+        },
+      };
+    },
     async runBrowserCommand(args) {
       state.browserCommands.push(args);
       return state.browserCommandStatus;
@@ -148,7 +196,44 @@ describe("CLI parsing", () => {
     assert.equal(status, 0);
     assert.match(dependencies.state.stdout, /image \[options\] <prompt>/);
     assert.match(dependencies.state.stdout, /text \[options\] <prompt>/);
+    assert.match(dependencies.state.stdout, /gallery/);
     assert.match(dependencies.state.stdout, /browser/);
+  });
+
+  it("rejects invalid gallery arguments before launching a browser", async () => {
+    const invalidLimit = createFakeDependencies();
+    const invalidLimitStatus = await runCli(
+      ["node", "perchance", "gallery", "list", "--limit", "101"],
+      invalidLimit,
+    );
+
+    assert.equal(invalidLimitStatus, 1);
+    assert.equal(invalidLimit.state.launchCalls.length, 0);
+
+    const invalidId = createFakeDependencies();
+    const invalidIdStatus = await runCli(
+      ["node", "perchance", "gallery", "get", "not-an-id"],
+      invalidId,
+    );
+
+    assert.equal(invalidIdStatus, 1);
+    assert.equal(invalidId.state.launchCalls.length, 0);
+
+    const invalidChannel = createFakeDependencies();
+    const invalidChannelStatus = await runCli(
+      [
+        "node",
+        "perchance",
+        "gallery",
+        "list",
+        "--channel",
+        "bad/channel",
+      ],
+      invalidChannel,
+    );
+
+    assert.equal(invalidChannelStatus, 1);
+    assert.equal(invalidChannel.state.launchCalls.length, 0);
   });
 
   it("rejects an invalid image shape before launching a browser", async () => {
@@ -404,6 +489,174 @@ describe("image command", () => {
     assert.equal(status, 1);
     assert.equal(dependencies.state.browserCloseCalls, 1);
     assert.equal(dependencies.state.stderr, "Error: generation failed\n");
+  });
+});
+
+describe("gallery commands", () => {
+  it("lists entries with defaults as one gallery-page object", async () => {
+    const dependencies = createFakeDependencies();
+
+    const status = await runCli(
+      ["node", "perchance", "gallery", "list"],
+      dependencies,
+    );
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.galleryListCalls, [{
+      channel: "ai-text-to-image-generator",
+      contentFilter: "g",
+      limit: 20,
+      cursor: undefined,
+      sort: "recent",
+      timeRange: undefined,
+    }]);
+    assert.deepEqual(JSON.parse(dependencies.state.stdout), {
+      entries: dependencies.state.galleryPage.entries,
+      nextCursor: "next-cursor",
+    });
+    assert.equal(dependencies.state.galleryCloseCalls, 1);
+    assert.equal(dependencies.state.browserCloseCalls, 1);
+  });
+
+  it("forwards explicit list options", async () => {
+    const dependencies = createFakeDependencies();
+    const cursor = encodeGalleryCursor(2);
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "gallery",
+      "list",
+      "--channel",
+      "demo-channel",
+      "--limit",
+      "2",
+      "--cursor",
+      cursor,
+      "--sort",
+      "top",
+      "--time-range",
+      "1-week",
+    ], dependencies);
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.galleryListCalls[0], {
+      channel: "demo-channel",
+      contentFilter: "g",
+      limit: 2,
+      cursor,
+      sort: "top",
+      timeRange: "1-week",
+    });
+  });
+
+  it("retrieves an item by supported URL", async () => {
+    const dependencies = createFakeDependencies();
+    const url = dependencies.state.galleryEntry.imageUrl;
+
+    const status = await runCli(
+      ["node", "perchance", "gallery", "get", url],
+      dependencies,
+    );
+
+    assert.equal(status, 0);
+    assert.deepEqual(dependencies.state.galleryGetCalls, [{
+      idOrUrl: url,
+      options: {
+        channel: "ai-text-to-image-generator",
+        contentFilter: "g",
+      },
+    }]);
+    assert.deepEqual(
+      JSON.parse(dependencies.state.stdout),
+      dependencies.state.galleryEntry,
+    );
+  });
+
+  it("downloads list entries with collision-safe deterministic names", async () => {
+    const dependencies = createFakeDependencies();
+    const initial =
+      `/work/gallery_images/${dependencies.state.galleryEntry.imageId}.jpeg`;
+    dependencies.state.existingDirectories.add(initial);
+
+    const status = await runCli(
+      ["node", "perchance", "gallery", "list", "--download"],
+      dependencies,
+    );
+
+    const expected =
+      `/work/gallery_images/${dependencies.state.galleryEntry.imageId}-2.jpeg`;
+    assert.equal(status, 0);
+    assert.equal(
+      dependencies.state.galleryDownloadCalls[0].destination,
+      expected,
+    );
+    assert.equal(
+      JSON.parse(dependencies.state.stdout).entries[0].filePath,
+      expected,
+    );
+  });
+
+  it("treats an image extension as an exact get filename", async () => {
+    const dependencies = createFakeDependencies();
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "gallery",
+      "get",
+      dependencies.state.galleryEntry.imageId,
+      "--download",
+      "--output",
+      "selected.jpeg",
+    ], dependencies);
+
+    assert.equal(status, 0);
+    assert.equal(
+      dependencies.state.galleryDownloadCalls[0].destination,
+      "/work/selected.jpeg",
+    );
+    assert.equal(
+      JSON.parse(dependencies.state.stdout).filePath,
+      "/work/selected.jpeg",
+    );
+  });
+
+  it("treats an extensionless get output as a directory", async () => {
+    const dependencies = createFakeDependencies();
+
+    const status = await runCli([
+      "node",
+      "perchance",
+      "gallery",
+      "get",
+      dependencies.state.galleryEntry.imageId,
+      "--download",
+      "--output",
+      "selected",
+    ], dependencies);
+
+    assert.equal(status, 0);
+    assert.equal(
+      dependencies.state.galleryDownloadCalls[0].destination,
+      `/work/selected/${dependencies.state.galleryEntry.imageId}.jpeg`,
+    );
+  });
+
+  it("prints no partial JSON and closes resources after a download error", async () => {
+    const dependencies = createFakeDependencies();
+    dependencies.state.galleryDownloadError = new Error("download failed");
+
+    const status = await runCli(
+      ["node", "perchance", "gallery", "list", "--download"],
+      dependencies,
+    );
+
+    assert.equal(status, 1);
+    assert.equal(dependencies.state.stdout, "");
+    assert.match(dependencies.state.stderr, /download failed/);
+    assert.equal(dependencies.state.galleryCloseCalls, 1);
+    assert.equal(dependencies.state.browserCloseCalls, 1);
   });
 });
 

@@ -6,7 +6,14 @@
  */
 
 // Errors
-export { PerchanceError, ConnectionError, AuthenticationError, RateLimitError } from "./errors.js";
+export {
+  PerchanceError,
+  ConnectionError,
+  AuthenticationError,
+  RateLimitError,
+  GalleryNotFoundError,
+  GalleryProtocolError,
+} from "./errors.js";
 
 // Types
 export type {
@@ -16,6 +23,11 @@ export type {
   GenerateTextOptions,
   GenerateTextRequestBody,
   GenerateImageRequestBody,
+  GalleryEntry,
+  GalleryGetOptions,
+  GalleryListOptions,
+  GalleryPage,
+  GallerySort,
 } from "./types.js";
 
 // Browser interfaces
@@ -29,6 +41,10 @@ export { ImageGenerator, ImageResult } from "./imageGenerator.js";
 
 // Text
 export { TextGenerator } from "./textGenerator.js";
+
+// Gallery
+export { GalleryClient } from "./galleryClient.js";
+export type { GalleryClientOptions } from "./galleryClient.js";
 
 // Camoufox helper (optional, requires `camoufox-js` peer dep)
 export { launchCamoufox, wrapContext } from "./camoufox.js";

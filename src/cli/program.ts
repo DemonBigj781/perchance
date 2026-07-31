@@ -9,12 +9,26 @@ import {
 } from "commander";
 
 import { launchCamoufox } from "../camoufox.js";
+import { GalleryClient } from "../galleryClient.js";
 import type { BrowserContext } from "../generator.js";
 import { ImageGenerator } from "../imageGenerator.js";
+import {
+  decodeGalleryCursor,
+  parseGalleryImageId,
+  trustedImageExtension,
+  validateGalleryChannel,
+  validateGalleryContentFilter,
+  validateGalleryTimeRange,
+} from "../internal/galleryProtocol.js";
 import { TextGenerator } from "../textGenerator.js";
 import type {
   GenerateImageOptions,
   GenerateTextOptions,
+  GalleryEntry,
+  GalleryGetOptions,
+  GalleryListOptions,
+  GalleryPage,
+  GallerySort,
   ImageShape,
 } from "../types.js";
 import { runCamoufoxCommand } from "./browser.js";
@@ -49,10 +63,18 @@ export interface TextGeneratorLike {
   ): AsyncGenerator<string, void, undefined>;
 }
 
+export interface GalleryClientLike {
+  list(options: GalleryListOptions): Promise<GalleryPage>;
+  get(idOrUrl: string, options: GalleryGetOptions): Promise<GalleryEntry>;
+  download(entry: GalleryEntry, destination: string): Promise<string>;
+  close(): Promise<void>;
+}
+
 export interface CliDependencies {
   launchBrowser(options: { headless: boolean }): Promise<BrowserContext>;
   createImageGenerator(): ImageGeneratorLike;
   createTextGenerator(): TextGeneratorLike;
+  createGalleryClient(context: BrowserContext): GalleryClientLike;
   runBrowserCommand(args: string[]): Promise<number>;
   isImmutableBundle(): boolean;
   stdout(text: string): void;
@@ -114,6 +136,53 @@ function parseShape(value: string): ImageShape {
   return value as ImageShape;
 }
 
+function parseGalleryLimit(value: string): number {
+  const parsed = parsePositiveInteger(value);
+  if (parsed > 100) {
+    throw new InvalidArgumentError("Expected at most 100 gallery entries.");
+  }
+  return parsed;
+}
+
+function parseGallerySort(value: string): GallerySort {
+  if (value !== "recent" && value !== "top" && value !== "trending") {
+    throw new InvalidArgumentError("Expected recent, top, or trending.");
+  }
+  return value;
+}
+
+function commanderValue<T>(read: () => T): T {
+  try {
+    return read();
+  } catch (error) {
+    throw new InvalidArgumentError(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
+function parseGalleryId(value: string): string {
+  commanderValue(() => parseGalleryImageId(value));
+  return value;
+}
+
+function parseGalleryChannel(value: string): string {
+  return commanderValue(() => validateGalleryChannel(value));
+}
+
+function parseGalleryContentFilter(value: string): string {
+  return commanderValue(() => validateGalleryContentFilter(value));
+}
+
+function parseGalleryTimeRange(value: string): string {
+  return commanderValue(() => validateGalleryTimeRange(value));
+}
+
+function parseGalleryCursor(value: string): string {
+  commanderValue(() => decodeGalleryCursor(value));
+  return value;
+}
+
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
@@ -122,6 +191,7 @@ const productionDependencies: CliDependencies = {
   launchBrowser: launchCamoufox,
   createImageGenerator: () => new ImageGenerator(),
   createTextGenerator: () => new TextGenerator(),
+  createGalleryClient: (context) => new GalleryClient({ browserContext: context }),
   runBrowserCommand: runCamoufoxCommand,
   isImmutableBundle: () => process.env.PERCHANCE_APPIMAGE === "1",
   stdout: (text) => process.stdout.write(text),
@@ -223,6 +293,61 @@ export async function resolveImageOutput(
 
   await dependencies.mkdir(dirname(destination));
   return destination;
+}
+
+async function resolveGalleryDirectory(
+  requested: string | undefined,
+  dependencies: CliDependencies,
+): Promise<string> {
+  const directory = requested
+    ? absolutePath(requested, dependencies)
+    : join(dependencies.cwd(), "gallery_images");
+  if (
+    await dependencies.pathExists(directory) &&
+    !await dependencies.isDirectory(directory)
+  ) {
+    throw new Error(`Gallery output is not a directory: ${directory}`);
+  }
+  await dependencies.mkdir(directory);
+  return directory;
+}
+
+async function availableGalleryPath(
+  directory: string,
+  generatedName: string,
+  dependencies: CliDependencies,
+): Promise<string> {
+  const extension = extname(generatedName);
+  const stem = extension
+    ? generatedName.slice(0, -extension.length)
+    : generatedName;
+  let candidate = join(directory, generatedName);
+  for (let suffix = 2; await dependencies.pathExists(candidate); suffix += 1) {
+    candidate = join(directory, `${stem}-${suffix}${extension}`);
+  }
+  return candidate;
+}
+
+async function resolveGalleryGetOutput(
+  requested: string | undefined,
+  entry: GalleryEntry,
+  dependencies: CliDependencies,
+): Promise<string> {
+  const generatedName =
+    `${entry.imageId}.${trustedImageExtension(entry.imageUrl)}`;
+  if (!requested) {
+    const directory = await resolveGalleryDirectory(undefined, dependencies);
+    return await availableGalleryPath(directory, generatedName, dependencies);
+  }
+
+  const destination = absolutePath(requested, dependencies);
+  if (/\.(?:png|jpe?g|webp)$/i.test(destination)) {
+    await dependencies.mkdir(dirname(destination));
+    return destination;
+  }
+
+  const directory = await resolveGalleryDirectory(requested, dependencies);
+  return await availableGalleryPath(directory, generatedName, dependencies);
 }
 
 function addImageCommand(
@@ -354,6 +479,173 @@ function addTextCommand(
     });
 }
 
+interface GalleryListCommandOptions extends OptionValues {
+  channel: string;
+  contentFilter: string;
+  limit: number;
+  cursor?: string;
+  sort: GallerySort;
+  timeRange?: string;
+  download?: boolean;
+  output?: string;
+  visible?: boolean;
+}
+
+interface GalleryGetCommandOptions extends OptionValues {
+  channel: string;
+  contentFilter: string;
+  download?: boolean;
+  output?: string;
+  visible?: boolean;
+}
+
+function addGalleryCommand(
+  program: Command,
+  dependencies: CliDependencies,
+): void {
+  const gallery = program
+    .command("gallery")
+    .description("Retrieve public gallery images and prompts");
+
+  gallery
+    .command("list")
+    .description("List public gallery entries")
+    .option(
+      "--channel <name>",
+      "gallery channel",
+      parseGalleryChannel,
+      "ai-text-to-image-generator",
+    )
+    .option(
+      "--content-filter <value>",
+      "gallery content filter",
+      parseGalleryContentFilter,
+      "g",
+    )
+    .option("--limit <number>", "number of entries", parseGalleryLimit, 20)
+    .option(
+      "--cursor <value>",
+      "opaque continuation cursor",
+      parseGalleryCursor,
+    )
+    .option(
+      "--sort <value>",
+      "recent, top, or trending",
+      parseGallerySort,
+      "recent",
+    )
+    .option(
+      "--time-range <value>",
+      "gallery time range",
+      parseGalleryTimeRange,
+    )
+    .option("--download", "download returned images")
+    .option("-o, --output <path>", "download directory")
+    .option("--visible", "show the Camoufox window")
+    .action(async (options: GalleryListCommandOptions) => {
+      await withBrowserContext(dependencies, options.visible, async (context) => {
+        const client = dependencies.createGalleryClient(context);
+        try {
+          const page = await client.list({
+            channel: options.channel,
+            contentFilter: options.contentFilter,
+            limit: options.limit,
+            cursor: options.cursor,
+            sort: options.sort,
+            timeRange: options.timeRange,
+          });
+          let output: Array<GalleryEntry & { filePath?: string }> =
+            page.entries.map((entry) => ({ ...entry }));
+          if (options.download) {
+            const directory = await resolveGalleryDirectory(
+              options.output,
+              dependencies,
+            );
+            output = [];
+            for (const entry of page.entries) {
+              const generatedName =
+                `${entry.imageId}.${trustedImageExtension(entry.imageUrl)}`;
+              const destination = await availableGalleryPath(
+                directory,
+                generatedName,
+                dependencies,
+              );
+              output.push({
+                ...entry,
+                filePath: await client.download(entry, destination),
+              });
+            }
+          }
+          dependencies.stdout(
+            `${JSON.stringify({
+              entries: output,
+              nextCursor: page.nextCursor,
+            })}\n`,
+          );
+        } finally {
+          await client.close();
+        }
+      });
+    });
+
+  gallery
+    .command("get")
+    .description("Retrieve one public gallery entry")
+    .argument(
+      "<id-or-url>",
+      "gallery image ID or supported URL",
+      parseGalleryId,
+    )
+    .option(
+      "--channel <name>",
+      "gallery channel",
+      parseGalleryChannel,
+      "ai-text-to-image-generator",
+    )
+    .option(
+      "--content-filter <value>",
+      "gallery content filter",
+      parseGalleryContentFilter,
+      "g",
+    )
+    .option("--download", "download the returned image")
+    .option("-o, --output <path>", "destination file or directory")
+    .option("--visible", "show the Camoufox window")
+    .action(
+      async (idOrUrl: string, options: GalleryGetCommandOptions) => {
+        await withBrowserContext(
+          dependencies,
+          options.visible,
+          async (context) => {
+            const client = dependencies.createGalleryClient(context);
+            try {
+              const entry = await client.get(idOrUrl, {
+                channel: options.channel,
+                contentFilter: options.contentFilter,
+              });
+              const output: GalleryEntry & { filePath?: string } = {
+                ...entry,
+              };
+              if (options.download) {
+                output.filePath = await client.download(
+                  entry,
+                  await resolveGalleryGetOutput(
+                    options.output,
+                    entry,
+                    dependencies,
+                  ),
+                );
+              }
+              dependencies.stdout(`${JSON.stringify(output)}\n`);
+            } finally {
+              await client.close();
+            }
+          },
+        );
+      },
+    );
+}
+
 function addBrowserCommand(
   program: Command,
   dependencies: CliDependencies,
@@ -388,7 +680,7 @@ export async function runCli(
   let status = 0;
   const program = new Command()
     .name("perchance")
-    .description("Generate images and text through Perchance")
+    .description("Generate and retrieve content through Perchance")
     .showHelpAfterError()
     .exitOverride()
     .configureOutput({
@@ -398,6 +690,7 @@ export async function runCli(
 
   addImageCommand(program, dependencies);
   addTextCommand(program, dependencies);
+  addGalleryCommand(program, dependencies);
   addBrowserCommand(program, dependencies, (nextStatus) => {
     status = nextStatus;
   });

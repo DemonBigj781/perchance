@@ -22,6 +22,9 @@ describe("package", () => {
 
     assert.equal(typeof publicApi.ImageGenerator, "function");
     assert.equal(typeof publicApi.TextGenerator, "function");
+    assert.equal(typeof publicApi.GalleryClient, "function");
+    assert.equal(typeof publicApi.GalleryNotFoundError, "function");
+    assert.equal(typeof publicApi.GalleryProtocolError, "function");
   });
 
   it("exports the documented Camoufox helper subpath", async () => {
