@@ -26,8 +26,8 @@ The official Perchance text-to-image plugin constructs public gallery URLs at
 generator channel, public subchannel, sort order, time range, and content
 filter. Direct non-browser requests are currently challenged by Cloudflare.
 Gallery retrieval therefore MUST execute through Camoufox and consume the
-structured data used by the official gallery rather than scrape rendered
-cards.
+structured metadata exposed by the official gallery markup and item document
+endpoint rather than infer values from rendered text or layout.
 
 ## Scope
 
@@ -37,7 +37,8 @@ The first release MUST provide:
 - Specific item lookup by image ID or supported gallery URL.
 - A configurable gallery channel.
 - Prompt and generation metadata retrieval.
-- Cursor-based pagination when the upstream service provides a cursor.
+- Opaque cursor-based pagination backed by the upstream gallery's `skip`
+  mechanism.
 - Optional image downloads.
 - Typed library exports and CLI commands.
 
@@ -145,8 +146,10 @@ Both commands MUST support:
 - `--time-range <value>` with a default of `all-time` for recent sorting and
   `1-month` for ranked sorting unless explicitly supplied.
 
-`gallery list` MUST print one JSON array. `gallery get` MUST print one JSON
-object. Downloaded results MUST include a `filePath` field in CLI output.
+`gallery list` MUST print one JSON object with `entries` and optional
+`nextCursor` fields so pagination state is preserved. `gallery get` MUST print
+one JSON object. Downloaded results MUST include a `filePath` field in CLI
+output.
 
 When `--download` is present without `--output`, the CLI MUST save images under
 `gallery_images/`. List downloads MUST use `<image-id>.<extension>`. Item
@@ -156,19 +159,24 @@ exact filename and otherwise treat it as a directory.
 ## Browser-Backed Transport
 
 The transport MUST use Camoufox to establish a browser session accepted by the
-official gallery service. It MUST attach response observation before gallery
-navigation so the initial feed response cannot be missed.
+official gallery service. Feed retrieval MUST navigate to the official gallery
+page and read only the structured `.imageCtn` data attributes and image source
+used by the gallery runtime. It MUST NOT infer metadata from card text,
+position, styling, or other visual presentation.
 
-The response observer MUST accept responses only from the official gallery
-service origin and the specific structured endpoints used by the loaded
-gallery. It MUST reject unrelated page, advertising, analytics, and image
-responses.
+Additional feed pages MUST use the gallery runtime's same-origin
+`imageElementsHtmlOnly=true` and `skip=<offset>` request. Exact item lookup
+MUST use the gallery runtime's structured
+`https://aigc.uploads.dev/docs/<image-id>.json` document request from inside
+the accepted browser session. The adapter MUST reject redirects, unsupported
+origins, unrelated advertising or analytics responses, and non-JSON item
+documents.
 
-The transport MUST validate the captured payload before returning it. Payload
-validation MUST verify collection shape, item identity, image URL, prompt
-type, pagination type, and optional numeric metadata. Invalid records MUST
-produce a protocol error rather than silently disappearing from a successful
-result.
+The transport MUST validate extracted feed records and item documents before
+returning them. Validation MUST verify collection shape, item identity, image
+URL, prompt type, pagination state, and optional numeric metadata. Invalid
+records MUST produce a protocol error rather than silently disappearing from a
+successful result.
 
 The browser adapter MUST isolate upstream route names and response shapes from
 the public API. Changes to the upstream protocol SHOULD require changes only in
@@ -180,24 +188,29 @@ Given valid list options, the client MUST:
 
 1. Validate options before launching a browser.
 2. Open or reuse a Camoufox context.
-3. Attach the gallery response observer.
-4. Navigate to the official gallery URL with the requested channel and filters.
-5. Wait for the structured feed response with a bounded timeout.
+3. Navigate to the official gallery URL with the requested channel and filters.
+4. Read the initial structured image elements, or request the supplied `skip`
+   offset through `imageElementsHtmlOnly=true`.
+5. Request additional structured fragments only until the limit is satisfied or
+   the upstream page is exhausted.
 6. Normalize no more than the requested number of entries.
-7. Return the normalized page and continuation cursor.
+7. Return the normalized page and an opaque cursor encoding the next `skip`
+   offset when another upstream page may exist.
 
-When a cursor is supplied, it MUST be passed using the upstream pagination
-mechanism discovered from the official gallery runtime. The public cursor MUST
-be treated as opaque.
+When a cursor is supplied, it MUST be decoded only by the gallery adapter and
+passed through the upstream `skip` mechanism. The public cursor MUST remain
+opaque and versioned so malformed or incompatible cursors fail validation.
 
 ## Item Lookup Flow
 
 The client MUST accept either a gallery image ID or a supported Perchance
 gallery URL. URL parsing MUST reject non-HTTPS URLs and unsupported hosts.
 
-The transport MUST use the official gallery item request used by the loaded
-gallery runtime. It MUST NOT scan an unbounded number of feed pages to emulate
-item lookup. A missing item MUST produce `GalleryNotFoundError`.
+The transport MUST request the official gallery item document at
+`https://aigc.uploads.dev/docs/<image-id>.json` from inside the accepted browser
+session. It MUST verify that the returned document contains the requested ID
+and requested channel. It MUST NOT scan feed pages to emulate item lookup. A
+missing item MUST produce `GalleryNotFoundError`.
 
 ## Download Flow
 
@@ -254,19 +267,19 @@ without closing injected caller-owned resources.
 
 ## Testing
 
-Default tests MUST use injected browser and network-response fixtures. They
-MUST NOT contact Perchance or download Camoufox.
+Default tests MUST use injected browser, structured-markup extraction, and item
+document fixtures. They MUST NOT contact Perchance or download Camoufox.
 
 Unit tests MUST cover:
 
 - Default and explicit gallery options.
 - Channel, limit, sort, ID, and URL validation.
-- Feed payload normalization.
+- Feed record and item document normalization.
 - Optional metadata and older records.
 - Cursor propagation.
 - Specific item lookup and not-found behavior.
 - Rejection of malformed or incompatible payloads.
-- Response filtering that ignores unrelated requests.
+- Origin and content-type filtering that rejects unrelated requests.
 - Download MIME validation and deterministic filenames.
 - Browser ownership and cleanup on every failure path.
 
@@ -328,6 +341,6 @@ at least one public `g`-filtered gallery entry with a nonempty prompt.
 
 ## Changelog
 
-| Date       | Change                                                |
-|------------|-------------------------------------------------------|
-| 2026-07-31 | Initial approved design for public gallery retrieval. |
+- 2026-07-31: Initial approved design for public gallery retrieval.
+- 2026-07-31: Corrected transport details after live protocol inspection.
+- 2026-07-31: Clarified paginated CLI list output as a gallery-page object.
