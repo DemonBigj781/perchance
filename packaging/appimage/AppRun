@@ -2,7 +2,16 @@
 set -eu
 
 if [ -z "${APPDIR:-}" ]; then
-  APPDIR=$(dirname "$0")
+  APP_RUN=$0
+  while [ -L "$APP_RUN" ]; do
+    APP_RUN_DIR=$(CDPATH= cd -- "$(dirname -- "$APP_RUN")" && pwd -P)
+    APP_RUN_TARGET=$(readlink "$APP_RUN")
+    case "$APP_RUN_TARGET" in
+      /*) APP_RUN=$APP_RUN_TARGET ;;
+      *) APP_RUN=$APP_RUN_DIR/$APP_RUN_TARGET ;;
+    esac
+  done
+  APPDIR=$(CDPATH= cd -- "$(dirname -- "$APP_RUN")" && pwd -P)
 fi
 export CAMOUFOX_INSTALL_DIR="$APPDIR/usr/lib/camoufox"
 export PERCHANCE_APPIMAGE=1

@@ -3,11 +3,13 @@ import { execFile } from "node:child_process";
 import {
   access,
   chmod,
+  copyFile,
   mkdir,
   mkdtemp,
   readFile,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -50,6 +52,8 @@ describe("AppImage runtime files", () => {
       /CAMOUFOX_INSTALL_DIR="\$APPDIR\/usr\/lib\/camoufox"/,
     );
     assert.match(appRun, /PERCHANCE_APPIMAGE=1/);
+    assert.match(appRun, /while \[ -L "\$APP_RUN" \]; do/);
+    assert.match(appRun, /readlink "\$APP_RUN"/);
     assert.match(appRun, /usr\/lib\/native/);
     assert.match(appRun, /LD_LIBRARY_PATH/);
     assert.match(appRun, /if \[ "\$#" -eq 0 \]; then/);
@@ -59,6 +63,34 @@ describe("AppImage runtime files", () => {
       appRun,
       /"\$APPDIR\/usr\/lib\/perchance\/dist\/src\/cli\.js"/,
     );
+  });
+
+  it("resolves a symlinked AppRun launcher before locating bundled files", async () => {
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "perchance-apprun-"));
+    const appDir = join(temporaryRoot, "Perchance.AppDir");
+    const binDir = join(temporaryRoot, "bin");
+    const nodePath = join(appDir, "usr/bin/node");
+    const cliPath = join(appDir, "usr/lib/perchance/dist/src/cli.js");
+    const launcherPath = join(binDir, "perchance");
+
+    try {
+      await mkdir(join(appDir, "usr/bin"), { recursive: true });
+      await mkdir(join(appDir, "usr/lib/perchance/dist/src"), {
+        recursive: true,
+      });
+      await mkdir(binDir, { recursive: true });
+      await copyFile(appRunPath, join(appDir, "AppRun"));
+      await chmod(join(appDir, "AppRun"), 0o755);
+      await writeFile(nodePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
+      await chmod(nodePath, 0o755);
+      await writeFile(cliPath, "// launcher fixture\n");
+      await symlink(join(appDir, "AppRun"), launcherPath);
+
+      const { stdout } = await execFileAsync(launcherPath, ["gallery", "--help"]);
+      assert.equal(stdout.trim(), `${cliPath}\ngallery\n--help`);
+    } finally {
+      await rm(temporaryRoot, { force: true, recursive: true });
+    }
   });
 
   it("declares terminal desktop metadata", async () => {
