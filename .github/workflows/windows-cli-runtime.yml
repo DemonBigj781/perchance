@@ -1,0 +1,94 @@
+name: Windows CLI Runtime Validation
+
+# Manual-only by design. This workflow does not run on push, pull request, or schedule.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-runtime:
+    name: Validate Camoufox, Playwright, and Perchance CLI
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Tool 1: install the project's Node dependencies. This installs
+      # camoufox-js, playwright-core, commander, and the build toolchain.
+      - name: Install project dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          npm ls camoufox-js
+          npm ls playwright-core
+
+      # Tool 2: explicitly fetch the Camoufox browser/runtime. Installing the
+      # npm package alone does not guarantee that the browser payload exists.
+      - name: Install Camoufox browser
+        shell: pwsh
+        run: |
+          npx camoufox-js fetch
+          npx camoufox-js --version
+
+      # Tool 3: explicitly install a Playwright browser through playwright-core.
+      # This keeps Playwright's own browser runtime verified independently of
+      # Camoufox instead of assuming npm ci downloaded it.
+      - name: Install Playwright Chromium
+        shell: pwsh
+        run: |
+          npx playwright-core install chromium
+          npx playwright-core --version
+
+      - name: Build Perchance CLI
+        shell: pwsh
+        run: |
+          npm run build
+          if (!(Test-Path "dist/src/cli.js")) {
+            throw "dist/src/cli.js was not produced by the TypeScript build"
+          }
+
+      # npm link creates the real Windows command shim (perchance.cmd) from the
+      # package.json bin entry, which lets CI exercise the same executable name
+      # a user receives after installing the package.
+      - name: Install CLI executable shim
+        shell: pwsh
+        run: |
+          npm link
+          $cmd = Get-Command perchance -ErrorAction Stop
+          Write-Host "Perchance executable: $($cmd.Source)"
+
+      - name: Run actual Perchance CLI executable
+        shell: pwsh
+        run: |
+          perchance --help
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Run unit tests
+        shell: pwsh
+        run: npm test
+
+      - name: Pack installable CLI package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          npm pack --pack-destination artifacts
+
+      - name: Upload Windows CLI package
+        uses: actions/upload-artifact@v4
+        with:
+          name: perchance-windows-cli-package
+          path: artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 7
