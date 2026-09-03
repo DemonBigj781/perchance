@@ -48,7 +48,9 @@ jobs:
       - name: Fetch pinned Camoufox runtime
         run: |
           npx camoufox-js fetch
-          npx camoufox-js --version
+          npx camoufox-js path
+          test -f "$HOME/.cache/camoufox/version.json"
+          node -e 'console.log(require(process.env.HOME + "/.cache/camoufox/version.json"))'
           test -x "$HOME/.cache/camoufox/camoufox"
           test -x "$HOME/.cache/camoufox/camoufox-bin"
 

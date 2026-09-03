@@ -38,7 +38,7 @@ jobs:
         shell: pwsh
         run: |
           npx camoufox-js fetch
-          npx camoufox-js --version
+          npx camoufox-js path
 
       # Tool 3: explicitly install a Playwright browser through playwright-core.
       # This keeps Playwright's own browser runtime verified independently of
