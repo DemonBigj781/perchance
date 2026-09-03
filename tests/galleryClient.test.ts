@@ -226,7 +226,7 @@ describe("GalleryClient", () => {
     };
     page.frames = () => [
       generatorFrame,
-      ...(activated > 0 && waits >= 2 ? [galleryFrame] : []),
+      ...(activated > 1 && waits >= 4 ? [galleryFrame] : []),
     ];
     page.waitForTimeout = async () => {
       waits += 1;
@@ -238,8 +238,31 @@ describe("GalleryClient", () => {
     await client.list({ limit: 1 });
 
     assert.equal(page.gotos[0], "https://perchance.org/ai-text-to-image-generator");
-    assert.equal(activated, 1);
+    assert.equal(activated, 2);
     assert.match(galleryFrameUrl, /sort=recent/);
+  });
+
+  it("retries transient official-generator navigation failures", async () => {
+    const page = makeGalleryPage({
+      feed: { records: [], consumed: 0, hasMore: false },
+    });
+    const successfulGoto = page.goto.bind(page);
+    let attempts = 0;
+    page.goto = async (url, options) => {
+      attempts += 1;
+      if (attempts < 3) throw new Error("temporary DNS failure");
+      await successfulGoto(url, options);
+    };
+    const client = new GalleryClient({
+      browserContext: contextWithPage(page),
+    });
+
+    await client.list({ limit: 1 });
+
+    assert.equal(attempts, 3);
+    assert.deepEqual(page.gotos, [
+      "https://perchance.org/ai-text-to-image-generator",
+    ]);
   });
 
   it("lists normalized entries and returns an opaque next cursor", async () => {

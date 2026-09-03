@@ -114,7 +114,7 @@ export abstract class Generator {
     try {
       await page.goto(
         `${baseUrl}/verifyUser?thread=0&__cacheBust=${cacheBust}`,
-        { waitUntil: "networkidle", timeout: 15_000 },
+        { waitUntil: "domcontentloaded", timeout: 30_000 },
       );
       const content = await page.content();
       const match = content.match(USER_KEY_REGEX);
@@ -160,7 +160,7 @@ export abstract class Generator {
       await page.goto(
         generatorUrl,
         {
-          waitUntil: isTextGeneration ? "domcontentloaded" : "networkidle",
+          waitUntil: "domcontentloaded",
           timeout: 60_000,
         },
       );

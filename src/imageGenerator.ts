@@ -98,6 +98,7 @@ export class ImageResult {
     try {
       await page.goto(
         `${BASE_URL}/verifyUser?thread=0&__cacheBust=${Math.random()}`,
+        { waitUntil: "domcontentloaded", timeout: 60_000 },
       );
 
       const result = await page.evaluate<
@@ -213,6 +214,7 @@ export class ImageGenerator extends Generator {
     try {
       await page.goto(
         `${BASE_URL}/verifyUser?thread=0&__cacheBust=${Math.random()}`,
+        { waitUntil: "domcontentloaded", timeout: 60_000 },
       );
 
       const requestId = `aiImageCompletion${Math.floor(Math.random() * 2 ** 30)}`;

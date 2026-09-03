@@ -1,1 +1,82 @@
+name: Build Linux AppImage
 
+# Manual-only by design. This workflow does not run on pushes, pull requests,
+# or a schedule.
+on:
+  workflow_dispatch:
+    inputs:
+      run_live_smoke:
+        description: Generate one live image with the completed AppImage
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perchance-appimage-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  appimage:
+    name: Build and verify Linux x86_64 AppImage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.1'
+          cache: npm
+
+      - name: Install Linux build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential file podman python3 squashfs-tools strace
+          podman --version
+          mksquashfs -version
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Fetch pinned Camoufox runtime
+        run: |
+          npx camoufox-js fetch
+          npx camoufox-js --version
+          test -x "$HOME/.cache/camoufox/camoufox"
+          test -x "$HOME/.cache/camoufox/camoufox-bin"
+
+      - name: Build and verify AppImage
+        run: npm run appimage
+
+      - name: Audit AppImage contents and size
+        run: npm run audit:appimage > release/appimage-size.tsv
+
+      - name: Run optional live image smoke test
+        if: ${{ inputs.run_live_smoke }}
+        run: npm run smoke:appimage
+
+      - name: Add artifact checksums to summary
+        run: |
+          echo '### Linux AppImage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          sha256sum release/Perchance-*.AppImage >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perchance-linux-x86_64-appimage
+          path: |
+            release/Perchance-*.AppImage
+            release/Perchance-*.AppImage.sha256
+            release/appimage-size.tsv
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

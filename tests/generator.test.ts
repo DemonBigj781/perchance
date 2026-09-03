@@ -46,11 +46,17 @@ const TEXT_BASE_URL = "https://text-generation.perchance.org/api";
 
 describe("generator", () => {
   it("ensureUserKey returns key from fast path", async () => {
-    const ctx = createMockContext([createMockPage(KEY_RESPONSE)]);
+    const page = createMockPage(KEY_RESPONSE);
+    const ctx = createMockContext([page]);
     const gen = new TestGenerator();
     gen.setBrowserContext(ctx);
     const key = await gen.ensureUserKey(BASE_URL);
     assert.equal(key, "test-key-12345");
+    assert.deepEqual(
+      (page.goto as unknown as ReturnType<typeof mock.fn>)
+        .mock.calls[0].arguments[1],
+      { waitUntil: "domcontentloaded", timeout: 30_000 },
+    );
   });
 
   it("ensureUserKey uses cache on second call", async () => {

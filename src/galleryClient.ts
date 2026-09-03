@@ -39,8 +39,10 @@ export interface GalleryClientOptions {
 
 const GENERATOR_URL = "https://perchance.org/ai-text-to-image-generator";
 const GALLERY_FRAME_PREFIX = "https://image-generation.perchance.org/gallery";
-const GALLERY_FRAME_TIMEOUT_STEPS = 90;
+const GALLERY_FRAME_TIMEOUT_STEPS = 240;
 const GALLERY_FRAME_POLL_MS = 500;
+const GALLERY_ACTIVATION_INTERVAL_STEPS = 4;
+const GALLERY_NAVIGATION_ATTEMPTS = 3;
 
 export class GalleryClient {
   private context: BrowserContext | null;
@@ -72,41 +74,69 @@ export class GalleryClient {
     page: BrowserPage,
     galleryUrl: string,
   ): Promise<BrowserFrame> {
-    await page.goto(GENERATOR_URL, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
+    let navigationError: unknown;
+    for (let attempt = 0; attempt < GALLERY_NAVIGATION_ATTEMPTS; attempt += 1) {
+      try {
+        await page.goto(GENERATOR_URL, {
+          waitUntil: "domcontentloaded",
+          timeout: 60_000,
+        });
+        navigationError = undefined;
+        break;
+      } catch (error) {
+        navigationError = error;
+        if (attempt + 1 < GALLERY_NAVIGATION_ATTEMPTS) {
+          await page.waitForTimeout(1_000 * (attempt + 1));
+        }
+      }
+    }
+    if (navigationError) throw navigationError;
 
     let galleryFrame: BrowserFrame | undefined;
-    let activationRequested = false;
     for (let step = 0; step < GALLERY_FRAME_TIMEOUT_STEPS; step += 1) {
       galleryFrame = page.frames().find((frame) =>
         frame.url().startsWith(GALLERY_FRAME_PREFIX)
       );
       if (galleryFrame) break;
 
-      if (!activationRequested) {
+      if (step % GALLERY_ACTIVATION_INTERVAL_STEPS === 0) {
         const generatorFrames = page.frames().filter((frame) =>
           frame.url().includes(".perchance.org/ai-text-to-image-generator")
         );
         for (const frame of generatorFrames) {
           try {
             const activated = await frame.evaluate<boolean>(() => {
-              const button = Array.from(document.querySelectorAll("button"))
+              const galleryFrameExists = Array.from(
+                document.querySelectorAll("iframe"),
+              ).some((candidate) =>
+                (candidate.getAttribute("src") ?? "").includes(
+                  "image-generation.perchance.org/gallery",
+                )
+              );
+              if (galleryFrameExists) return false;
+
+              const button = Array.from(document.querySelectorAll<HTMLElement>(
+                "button, [role='button'], [onclick]",
+              ))
                 .find((candidate) => {
-                  const handler = candidate.getAttribute("onclick") ?? "";
-                  const text = candidate.textContent ?? "";
-                  return handler.includes("showSocialsButtonClickHandler") ||
-                    text.includes("comments & gallery");
+                  const handler = (
+                    candidate.getAttribute("onclick") ?? ""
+                  ).toLowerCase();
+                  const text = (candidate.textContent ?? "").toLowerCase();
+                  const label = `${
+                    candidate.getAttribute("aria-label") ?? ""
+                  } ${candidate.getAttribute("title") ?? ""}`.toLowerCase();
+                  return handler.includes("showsocialsbuttonclickhandler") ||
+                    (
+                      (text.includes("gallery") || label.includes("gallery")) &&
+                      (text.includes("comment") || label.includes("comment"))
+                    );
                 });
               if (!button) return false;
               button.click();
               return true;
             });
-            if (activated) {
-              activationRequested = true;
-              break;
-            }
+            if (activated) break;
           } catch {
             // The generator frame can navigate while its content initializes.
           }
