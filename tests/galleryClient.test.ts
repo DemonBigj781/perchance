@@ -242,6 +242,70 @@ describe("GalleryClient", () => {
     assert.match(galleryFrameUrl, /sort=recent/);
   });
 
+  it("mounts the public gallery frame without waiting for the generator control", async () => {
+    const feed = {
+      records: [{ imageId, imageUrl, prompt: "gallery prompt" }],
+      consumed: 1,
+      hasMore: false,
+    };
+    const page = makeGalleryPage({ feed });
+    let mountedUrl = "";
+    let fallbackActivations = 0;
+    const generatorFrame: BrowserFrame = {
+      url() {
+        return "https://generator-id.perchance.org/ai-text-to-image-generator";
+      },
+      async evaluate<T = unknown>() {
+        fallbackActivations += 1;
+        return true as T;
+      },
+    };
+    const galleryFrame: BrowserFrame = {
+      url() {
+        return mountedUrl;
+      },
+      async evaluate<T = unknown>(
+        _fn: string | ((...args: unknown[]) => T | Promise<T>),
+        ...args: unknown[]
+      ) {
+        const argument = args[0];
+        if (argument === undefined) return true as T;
+        if (
+          typeof argument === "string" &&
+          argument.startsWith("https://image-generation.perchance.org/gallery?")
+        ) {
+          mountedUrl = argument;
+          return undefined as T;
+        }
+        if (
+          typeof argument === "object" &&
+          argument !== null &&
+          "startSkip" in argument
+        ) {
+          return feed as T;
+        }
+        throw new Error(`unexpected browser argument: ${String(argument)}`);
+      },
+    };
+    page.evaluate = async <T = unknown>(
+      _fn: string | ((...args: any[]) => T | Promise<T>),
+      ...args: any[]
+    ) => {
+      mountedUrl = String(args[0]);
+      return undefined as T;
+    };
+    page.frames = () => [generatorFrame, ...(mountedUrl ? [galleryFrame] : [])];
+    const client = new GalleryClient({
+      browserContext: contextWithPage(page),
+    });
+
+    const result = await client.list({ limit: 1 });
+
+    assert.equal(result.entries.length, 1);
+    assert.match(mountedUrl, /sort=recent/);
+    assert.equal(fallbackActivations, 0);
+  });
+
   it("retries transient official-generator navigation failures", async () => {
     const page = makeGalleryPage({
       feed: { records: [], consumed: 0, hasMore: false },

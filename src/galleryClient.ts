@@ -39,6 +39,7 @@ export interface GalleryClientOptions {
 
 const GENERATOR_URL = "https://perchance.org/ai-text-to-image-generator";
 const GALLERY_FRAME_PREFIX = "https://image-generation.perchance.org/gallery";
+const GALLERY_FRAME_ID = "perchance-api-public-gallery";
 const GALLERY_FRAME_TIMEOUT_STEPS = 240;
 const GALLERY_FRAME_POLL_MS = 500;
 const GALLERY_ACTIVATION_INTERVAL_STEPS = 4;
@@ -91,6 +92,34 @@ export class GalleryClient {
       }
     }
     if (navigationError) throw navigationError;
+
+    // Mount the public gallery directly inside the official generator wrapper.
+    // Perchance randomizes the generator implementation and its gallery button,
+    // and that control can take a long time to initialize (or never initialize
+    // in a headless browser). The gallery endpoint is still intended to run as
+    // an embedded frame, so creating that frame ourselves avoids depending on
+    // the generator's presentation details.
+    try {
+      await page.evaluate((targetUrl: unknown, frameId: unknown) => {
+        if (typeof targetUrl !== "string" || typeof frameId !== "string") {
+          throw new Error("Gallery frame parameters must be strings.");
+        }
+        const existing = Array.from(document.querySelectorAll("iframe"))
+          .find((candidate) => candidate.src === targetUrl);
+        if (existing) return;
+
+        const frame = document.createElement("iframe");
+        frame.id = frameId;
+        frame.src = targetUrl;
+        frame.title = "Perchance public gallery";
+        frame.setAttribute("aria-hidden", "true");
+        frame.style.cssText =
+          "position:fixed;left:-10000px;top:0;width:1px;height:1px;border:0;";
+        (document.body ?? document.documentElement).appendChild(frame);
+      }, galleryUrl, GALLERY_FRAME_ID);
+    } catch {
+      // Fall back to activating the generator's own gallery control below.
+    }
 
     let galleryFrame: BrowserFrame | undefined;
     for (let step = 0; step < GALLERY_FRAME_TIMEOUT_STEPS; step += 1) {
