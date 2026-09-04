@@ -130,7 +130,7 @@ browser installation:
 npm run appimage
 ```
 
-The builder expects Camoufox `v152.0.4-beta.28` in
+The builder expects Camoufox `v152.0.4-beta.29` in
 `${CAMOUFOX_INSTALL_DIR:-$HOME/.cache/camoufox}`. It requires Podman for the
 cached Debian Bookworm native-library collector plus `curl`, `sha256sum`,
 `tar`, `ldd`, `mksquashfs`, and `strip`. The collector image is tagged by the

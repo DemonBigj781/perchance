@@ -27,7 +27,7 @@ The AppImage contains all application-specific runtime components:
 
 - Perchance's compiled JavaScript CLI and production npm dependencies.
 - Official Node.js `v24.18.1` Linux x64 runtime.
-- The complete Camoufox `v152.0.4-beta.28` installation from the local Camoufox
+- The complete Camoufox `v152.0.4-beta.29` installation from the local Camoufox
   cache, including its executable, shared libraries, fonts, addons, GeoIP data,
   and metadata.
 - AppImage launch metadata, icon, desktop entry, and `AppRun` launcher.
@@ -131,7 +131,7 @@ The completed artifact must pass all of the following checks:
 - AppImage extraction and payload layout inspection.
 - No-argument invocation displays CLI help.
 - `browser path` resolves inside the AppImage mount or extracted AppDir.
-- `browser version` reports Camoufox `v152.0.4-beta.28`.
+- `browser version` reports Camoufox `v152.0.4-beta.29`.
 - `browser fetch` is rejected as an immutable-bundle operation.
 - A live image-generation smoke test writes a non-empty image file.
 - No Camoufox process remains after the smoke test exits.

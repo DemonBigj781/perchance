@@ -178,7 +178,7 @@ NODE_VERSION=24.18.1
 NODE_ARCHIVE=node-v24.18.1-linux-x64.tar.xz
 NODE_SHA256=d6c664df3f3f61458e8c277585571328522d705166723a7c7823a9253a4d15a0
 CAMOUFOX_VERSION=152.0.4
-CAMOUFOX_RELEASE=beta.28
+CAMOUFOX_RELEASE=beta.29
 ```
 
 The AppImage type 2 runtime must also be downloaded into the build cache and
@@ -230,7 +230,7 @@ The verification script must:
 - Verify the checksum file.
 - Run the AppImage with no arguments and assert CLI help output.
 - Assert `browser path` includes `/usr/lib/camoufox`.
-- Assert `browser version` includes `v152.0.4-beta.28`.
+- Assert `browser version` includes `v152.0.4-beta.29`.
 - Assert `browser fetch` exits nonzero and reports immutable AppImage behavior.
 - Extract the AppImage and assert the embedded Node.js, Perchance CLI,
   Camoufox executable, version metadata, fonts, and addons are present.

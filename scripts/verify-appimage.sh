@@ -105,8 +105,8 @@ printf '%s\n' "$PATH_OUTPUT" | grep -F '/usr/lib/camoufox' >/dev/null ||
   fail "browser path does not resolve to the embedded runtime"
 
 VERSION_OUTPUT=$(APPDIR="$EXTRACTED" "$EXTRACTED/AppRun" browser version)
-printf '%s\n' "$VERSION_OUTPUT" | grep -F 'v152.0.4-beta.28' >/dev/null ||
-  fail "browser version does not report v152.0.4-beta.28"
+printf '%s\n' "$VERSION_OUTPUT" | grep -F 'v152.0.4-beta.29' >/dev/null ||
+  fail "browser version does not report v152.0.4-beta.29"
 
 if FETCH_OUTPUT=$(APPDIR="$EXTRACTED" "$EXTRACTED/AppRun" browser fetch 2>&1); then
   fail "browser fetch unexpectedly succeeded inside the immutable AppImage"
