@@ -37,6 +37,7 @@ interface FakeGalleryPageConfig {
 function makeGalleryPage(config: FakeGalleryPageConfig): BrowserPage & {
   gotos: string[];
   closes: number;
+  contentFilterSelections: string[];
   evaluateArguments: unknown[];
 } {
   let activated = false;
@@ -45,10 +46,12 @@ function makeGalleryPage(config: FakeGalleryPageConfig): BrowserPage & {
   const page: BrowserPage & {
     gotos: string[];
     closes: number;
+    contentFilterSelections: string[];
     evaluateArguments: unknown[];
   } = {
     gotos: [] as string[],
     closes: 0,
+    contentFilterSelections: [] as string[],
     evaluateArguments: [] as unknown[],
     async goto(url: string) {
       page.gotos.push(url);
@@ -106,6 +109,17 @@ function makeGalleryPage(config: FakeGalleryPageConfig): BrowserPage & {
         }
         galleryFrameUrl = canonicalUrl.href;
         return undefined as T;
+      }
+      if (["g", "pg13", "none"].includes(String(argument))) {
+        const selectedUrl = new URL(galleryFrameUrl);
+        if (selectedUrl.searchParams.get("contentFilter") !== argument) {
+          page.contentFilterSelections.push(String(argument));
+          selectedUrl.searchParams.set("contentFilter", String(argument));
+          selectedUrl.searchParams.set("cacheKey", "test");
+          galleryFrameUrl = selectedUrl.href;
+          return "filter-changed" as T;
+        }
+        return "ready" as T;
       }
 
       page.evaluateArguments.push(argument);
@@ -229,6 +243,9 @@ describe("GalleryClient", () => {
         ) {
           return feed as T;
         }
+        if (["g", "pg13", "none"].includes(String(argument))) {
+          return "ready" as T;
+        }
         return true as T;
       },
     };
@@ -292,6 +309,9 @@ describe("GalleryClient", () => {
         ) {
           return feed as T;
         }
+        if (["g", "pg13", "none"].includes(String(argument))) {
+          return "ready" as T;
+        }
         throw new Error(`unexpected browser argument: ${String(argument)}`);
       },
     };
@@ -337,7 +357,7 @@ describe("GalleryClient", () => {
     ]);
   });
 
-  it("accepts a stricter content filter canonicalized by the gallery", async () => {
+  it("selects the requested filter after stricter gallery canonicalization", async () => {
     const page = makeGalleryPage({
       canonicalContentFilter: "g",
       feed: {
@@ -353,6 +373,7 @@ describe("GalleryClient", () => {
     const result = await client.list({ contentFilter: "none", limit: 1 });
 
     assert.equal(result.entries.length, 1);
+    assert.deepEqual(page.contentFilterSelections, ["none"]);
   });
 
   it("rejects a looser content filter than requested", async () => {

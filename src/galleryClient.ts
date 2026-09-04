@@ -223,6 +223,8 @@ export class GalleryClient {
         window.location.replace(targetUrl);
       }
     }, galleryUrl);
+    const requestedContentFilter =
+      new URL(galleryUrl).searchParams.get("contentFilter") ?? "g";
 
     for (let step = 0; step < GALLERY_FRAME_TIMEOUT_STEPS; step += 1) {
       const candidate = page.frames().find((frame) =>
@@ -230,10 +232,26 @@ export class GalleryClient {
       );
       if (candidate && matchesGalleryUrl(candidate.url(), galleryUrl)) {
         try {
-          const ready = await candidate.evaluate<boolean>(() =>
-            Boolean(document.querySelector("#main"))
-          );
-          if (ready) return candidate;
+          const state = await candidate.evaluate<
+            "pending" | "filter-changed" | "ready"
+          >((requestedFilter: unknown) => {
+            if (!document.querySelector("#main")) return "pending";
+            if (typeof requestedFilter !== "string") return "ready";
+
+            const select = document.querySelector("#contentFilterSelectEl");
+            const supportsFilter = select instanceof HTMLSelectElement &&
+              Array.from(select.options).some((option) =>
+                option.value === requestedFilter
+              );
+            if (supportsFilter && select.value !== requestedFilter) {
+              select.value = requestedFilter;
+              select.dispatchEvent(new Event("input", { bubbles: true }));
+              select.dispatchEvent(new Event("change", { bubbles: true }));
+              return "filter-changed";
+            }
+            return "ready";
+          }, requestedContentFilter);
+          if (state === "ready") return candidate;
         } catch {
           // Navigation can replace the frame document between polling steps.
         }
