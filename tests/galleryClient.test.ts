@@ -18,6 +18,7 @@ const imageId = "c".repeat(64);
 const imageUrl = `https://aigc.uploads.dev/image/${imageId}.jpeg`;
 
 interface FakeGalleryPageConfig {
+  canonicalContentFilter?: string;
   feed?: { records: unknown[]; consumed: number; hasMore: boolean };
   document?: {
     status: number;
@@ -96,7 +97,14 @@ function makeGalleryPage(config: FakeGalleryPageConfig): BrowserPage & {
         typeof argument === "string" &&
         argument.startsWith("https://image-generation.perchance.org/gallery?")
       ) {
-        galleryFrameUrl = argument;
+        const canonicalUrl = new URL(argument);
+        if (config.canonicalContentFilter) {
+          canonicalUrl.searchParams.set(
+            "contentFilter",
+            config.canonicalContentFilter,
+          );
+        }
+        galleryFrameUrl = canonicalUrl.href;
         return undefined as T;
       }
 
@@ -327,6 +335,39 @@ describe("GalleryClient", () => {
     assert.deepEqual(page.gotos, [
       "https://perchance.org/ai-text-to-image-generator",
     ]);
+  });
+
+  it("accepts a stricter content filter canonicalized by the gallery", async () => {
+    const page = makeGalleryPage({
+      canonicalContentFilter: "g",
+      feed: {
+        records: [{ imageId, imageUrl, prompt: "gallery prompt" }],
+        consumed: 1,
+        hasMore: false,
+      },
+    });
+    const client = new GalleryClient({
+      browserContext: contextWithPage(page),
+    });
+
+    const result = await client.list({ contentFilter: "none", limit: 1 });
+
+    assert.equal(result.entries.length, 1);
+  });
+
+  it("rejects a looser content filter than requested", async () => {
+    const page = makeGalleryPage({
+      canonicalContentFilter: "none",
+      feed: { records: [], consumed: 0, hasMore: false },
+    });
+    const client = new GalleryClient({
+      browserContext: contextWithPage(page),
+    });
+
+    await assert.rejects(
+      client.list({ contentFilter: "g", limit: 1 }),
+      /did not finish loading structured data/,
+    );
   });
 
   it("lists normalized entries and returns an opaque next cursor", async () => {

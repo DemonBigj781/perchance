@@ -44,6 +44,41 @@ const GALLERY_FRAME_TIMEOUT_STEPS = 240;
 const GALLERY_FRAME_POLL_MS = 500;
 const GALLERY_ACTIVATION_INTERVAL_STEPS = 4;
 const GALLERY_NAVIGATION_ATTEMPTS = 3;
+const CONTENT_FILTER_LEVELS = new Map([
+  ["g", 0],
+  ["pg13", 1],
+  ["none", 2],
+]);
+
+function matchesGalleryUrl(candidateHref: string, requestedHref: string): boolean {
+  try {
+    const candidate = new URL(candidateHref);
+    const requested = new URL(requestedHref);
+    if (
+      candidate.origin !== requested.origin ||
+      candidate.pathname !== requested.pathname
+    ) {
+      return false;
+    }
+    for (const key of ["channel", "subChannel", "sort", "timeRange"]) {
+      if (candidate.searchParams.get(key) !== requested.searchParams.get(key)) {
+        return false;
+      }
+    }
+
+    const candidateFilter = candidate.searchParams.get("contentFilter") ?? "";
+    const requestedFilter = requested.searchParams.get("contentFilter") ?? "";
+    if (candidateFilter === requestedFilter) return true;
+    const candidateLevel = CONTENT_FILTER_LEVELS.get(candidateFilter);
+    const requestedLevel = CONTENT_FILTER_LEVELS.get(requestedFilter);
+    return candidateLevel !== undefined &&
+      (requestedLevel === undefined
+        ? candidateFilter === "g"
+        : candidateLevel <= requestedLevel);
+  } catch {
+    return false;
+  }
+}
 
 export class GalleryClient {
   private context: BrowserContext | null;
@@ -193,7 +228,7 @@ export class GalleryClient {
       const candidate = page.frames().find((frame) =>
         frame.url().startsWith(GALLERY_FRAME_PREFIX)
       );
-      if (candidate && candidate.url().split("#", 1)[0] === galleryUrl) {
+      if (candidate && matchesGalleryUrl(candidate.url(), galleryUrl)) {
         try {
           const ready = await candidate.evaluate<boolean>(() =>
             Boolean(document.querySelector("#main"))
