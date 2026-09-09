@@ -61,8 +61,9 @@ describe("gallery protocol", () => {
       skip: 0,
       sort: "recent",
       timeRange: "all-time",
-      contentFilter: "g",
+      contentFilter: "none",
     });
+    assert.equal(normalizeGetOptions().contentFilter, "none");
 
     const url = new URL(buildGalleryUrl(options));
     assert.equal(url.origin, "https://image-generation.perchance.org");

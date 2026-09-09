@@ -14,6 +14,7 @@ import type { BrowserContext } from "../generator.js";
 import { ImageGenerator } from "../imageGenerator.js";
 import {
   decodeGalleryCursor,
+  DEFAULT_GALLERY_CONTENT_FILTER,
   parseGalleryImageId,
   trustedImageExtension,
   validateGalleryChannel,
@@ -520,7 +521,7 @@ function addGalleryCommand(
       "--content-filter <value>",
       "gallery content filter",
       parseGalleryContentFilter,
-      "g",
+      DEFAULT_GALLERY_CONTENT_FILTER,
     )
     .option("--limit <number>", "number of entries", parseGalleryLimit, 20)
     .option(
@@ -606,7 +607,7 @@ function addGalleryCommand(
       "--content-filter <value>",
       "gallery content filter",
       parseGalleryContentFilter,
-      "g",
+      DEFAULT_GALLERY_CONTENT_FILTER,
     )
     .option("--download", "download the returned image")
     .option("-o, --output <path>", "destination file or directory")

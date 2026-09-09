@@ -98,7 +98,9 @@ perchance gallery get <64-character-image-id>
 ```
 
 Gallery retrieval is read-only and defaults to the public
-`ai-text-to-image-generator` channel with the `g` content filter. List output
+`ai-text-to-image-generator` channel with the unfiltered `none` content filter.
+Pass `--content-filter g` or `--content-filter pg13` to opt into a stricter
+rating. List output
 is one JSON object with `entries` and an optional `nextCursor`; pass that cursor
 back with `--cursor` to continue the feed. Item lookup accepts an image ID or a
 supported Perchance gallery/image URL.

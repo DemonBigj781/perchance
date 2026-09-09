@@ -15,6 +15,7 @@ import {
 } from "./internal/galleryBrowser.js";
 import {
   buildGalleryUrl,
+  DEFAULT_GALLERY_CONTENT_FILTER,
   encodeGalleryCursor,
   GALLERY_DOCUMENT_ORIGIN,
   normalizeFeedEntry,
@@ -224,7 +225,8 @@ export class GalleryClient {
       }
     }, galleryUrl);
     const requestedContentFilter =
-      new URL(galleryUrl).searchParams.get("contentFilter") ?? "g";
+      new URL(galleryUrl).searchParams.get("contentFilter") ??
+        DEFAULT_GALLERY_CONTENT_FILTER;
 
     for (let step = 0; step < GALLERY_FRAME_TIMEOUT_STEPS; step += 1) {
       const candidate = page.frames().find((frame) =>
@@ -375,7 +377,7 @@ export class GalleryClient {
           channel: normalizedEntry.channel,
           sort: "recent",
           timeRange: "all-time",
-          contentFilter: "g",
+          contentFilter: DEFAULT_GALLERY_CONTENT_FILTER,
         }),
       );
       const response = await fetchGalleryImage(

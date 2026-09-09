@@ -504,7 +504,7 @@ describe("gallery commands", () => {
     assert.equal(status, 0);
     assert.deepEqual(dependencies.state.galleryListCalls, [{
       channel: "ai-text-to-image-generator",
-      contentFilter: "g",
+      contentFilter: "none",
       limit: 20,
       cursor: undefined,
       sort: "recent",
@@ -529,6 +529,8 @@ describe("gallery commands", () => {
       "list",
       "--channel",
       "demo-channel",
+      "--content-filter",
+      "pg13",
       "--limit",
       "2",
       "--cursor",
@@ -542,7 +544,7 @@ describe("gallery commands", () => {
     assert.equal(status, 0);
     assert.deepEqual(dependencies.state.galleryListCalls[0], {
       channel: "demo-channel",
-      contentFilter: "g",
+      contentFilter: "pg13",
       limit: 2,
       cursor,
       sort: "top",
@@ -564,7 +566,7 @@ describe("gallery commands", () => {
       idOrUrl: url,
       options: {
         channel: "ai-text-to-image-generator",
-        contentFilter: "g",
+        contentFilter: "none",
       },
     }]);
     assert.deepEqual(

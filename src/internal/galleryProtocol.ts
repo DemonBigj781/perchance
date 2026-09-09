@@ -7,6 +7,7 @@ import type {
 } from "../types.js";
 
 export const DEFAULT_GALLERY_CHANNEL = "ai-text-to-image-generator";
+export const DEFAULT_GALLERY_CONTENT_FILTER = "none";
 export const GALLERY_ORIGIN = "https://image-generation.perchance.org";
 export const GALLERY_URL = `${GALLERY_ORIGIN}/gallery`;
 export const GALLERY_DOCUMENT_ORIGIN = "https://aigc.uploads.dev";
@@ -109,7 +110,9 @@ export function normalizeListOptions(
     timeRange: validateGalleryTimeRange(
       options.timeRange ?? (sort === "recent" ? "all-time" : "1-month"),
     ),
-    contentFilter: validateGalleryContentFilter(options.contentFilter ?? "g"),
+    contentFilter: validateGalleryContentFilter(
+      options.contentFilter ?? DEFAULT_GALLERY_CONTENT_FILTER,
+    ),
   };
 }
 
@@ -120,7 +123,9 @@ export function normalizeGetOptions(
     channel: validateGalleryChannel(
       options.channel ?? DEFAULT_GALLERY_CHANNEL,
     ),
-    contentFilter: validateGalleryContentFilter(options.contentFilter ?? "g"),
+    contentFilter: validateGalleryContentFilter(
+      options.contentFilter ?? DEFAULT_GALLERY_CONTENT_FILTER,
+    ),
   };
 }
 
@@ -267,7 +272,7 @@ export function normalizeFeedEntry(
 export function normalizeGalleryDocument(
   value: unknown,
   channel: string,
-  contentFilter = "g",
+  contentFilter = DEFAULT_GALLERY_CONTENT_FILTER,
 ): GalleryEntry {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new GalleryProtocolError("Gallery item document must be an object.");
