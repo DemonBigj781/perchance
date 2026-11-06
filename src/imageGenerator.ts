@@ -2,7 +2,7 @@
  * AI image generator powered by Perchance.
  */
 
-import { Generator, BrowserPage } from "./generator.js";
+import { Generator } from "./generator.js";
 import { AuthenticationError, ConnectionError } from "./errors.js";
 import type { GenerateImageOptions, ImageResultData, ImageShape } from "./types.js";
 
@@ -145,14 +145,15 @@ export class ImageResult {
 }
 
 export class ImageGenerator extends Generator {
-  private static readonly BASE_URL = BASE_URL;
+  private static readonly GENERATION_TIMEOUT_MS = 180_000;
+  private static readonly POLL_INTERVAL_MS = 2_000;
 
   /**
    * Generate an image.
    *
-   * Self-healing: if the userKey is rejected by the API, a fresh
-   * key is obtained (which may trigger the full Turnstile flow if
-   * Cloudflare clearance has expired) and the request is retried.
+   * Keep the same request ID while the server queues or completes an image.
+   * Only an explicit invalid_key response refreshes the key, at most once.
+   * After the initial key lookup, polling has a three-minute budget.
    */
   async image(prompt: string, options: GenerateImageOptions = {}): Promise<ImageResult> {
     const {
@@ -165,59 +166,80 @@ export class ImageGenerator extends Generator {
     const resolution = SHAPE_TO_RESOLUTION[shape];
     if (!resolution) throw new Error(`Invalid shape: ${shape}`);
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const key = await this.ensureUserKey(BASE_URL);
+    const requestId = `aiImageCompletion${Math.floor(Math.random() * 2 ** 30)}`;
+    let key = await this.ensureUserKey(BASE_URL);
+    const deadline = Date.now() + ImageGenerator.GENERATION_TIMEOUT_MS;
+    let keyRefreshed = false;
 
+    while (Date.now() < deadline) {
       const response = await this.generateWithKey(
-        key, resolution, prompt, negativePrompt, seed, guidanceScale,
+        key, requestId, resolution, prompt, negativePrompt, seed, guidanceScale, deadline,
       );
 
       // Success
-      if (response.imageId !== undefined) {
+      const record = response && typeof response === "object"
+        ? response as Record<string, unknown>
+        : null;
+      if (typeof record?.imageId === "string" && record.imageId.length > 0) {
         return new ImageResult(this, response as ImageResultData);
       }
 
-      // Rate-limited: server says a previous request is still processing
-      const status = (response as Record<string, unknown>).status;
-      if (status === "waiting_for_prev_request_to_finish" && attempt < 2) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
+      // Queue responses are not authentication failures. Poll the same job.
+      const status = record?.status;
+      if (status === "waiting_for_prev_request_to_finish") {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        await new Promise(resolve => setTimeout(
+          resolve, Math.min(ImageGenerator.POLL_INTERVAL_MS, remaining),
+        ));
         continue;
       }
 
-      // Auth failure: try refreshing the key once
-      if (attempt === 0) {
+      if (status === "invalid_key" && !keyRefreshed) {
+        keyRefreshed = true;
         this.invalidateKey();
+        key = await this.ensureUserKey(BASE_URL);
         continue;
       }
 
-      throw new AuthenticationError(
-        `User key rejected after retry. Response: ${JSON.stringify(response)}`,
+      if (status === "invalid_key") {
+        throw new AuthenticationError("User key rejected after one refresh");
+      }
+
+      throw new ConnectionError(
+        `Unexpected image generation response: status=${String(status ?? "(none)").slice(0, 100)}`,
       );
     }
 
-    throw new AuthenticationError("Failed to generate image after retries");
+    throw new ConnectionError("Image generation timed out after 180 seconds");
   }
 
   /** Make the actual API call. Returns the JSON response. */
   private async generateWithKey(
     key: string,
+    requestId: string,
     resolution: string,
     prompt: string,
     negativePrompt: string | null,
     seed: number,
     guidanceScale: number,
-  ): Promise<Partial<ImageResultData>> {
+    deadline: number,
+  ): Promise<unknown> {
     const ctx = this.getBrowserContext();
     if (!ctx) throw new ConnectionError("No browser context available");
 
     const page = await ctx.newPage();
     try {
+      const remaining = () => {
+        const ms = deadline - Date.now();
+        if (ms <= 0) throw new ConnectionError("Image generation timed out after 180 seconds");
+        return ms;
+      };
       await page.goto(
         `${BASE_URL}/verifyUser?thread=0&__cacheBust=${Math.random()}`,
-        { waitUntil: "domcontentloaded", timeout: 60_000 },
+        { waitUntil: "domcontentloaded", timeout: Math.min(60_000, remaining()) },
       );
 
-      const requestId = `aiImageCompletion${Math.floor(Math.random() * 2 ** 30)}`;
       const url =
         `${BASE_URL}/generate?userKey=${key}` +
         `&requestId=${requestId}` +
@@ -234,17 +256,33 @@ export class ImageGenerator extends Generator {
         guidanceScale,
       };
 
-      return await page.evaluate<Partial<ImageResultData>>(
-        async ({ url, body }: { url: string; body: Record<string, unknown> }) => {
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          return await response.json();
+      return await page.evaluate<unknown>(
+        async ({ url, body, timeoutMs }: {
+          url: string;
+          body: Record<string, unknown>;
+          timeoutMs: number;
+        }) => {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+              signal: controller.signal,
+            });
+            return await response.json();
+          } finally {
+            clearTimeout(timer);
+          }
         },
-        { url, body },
+        { url, body, timeoutMs: remaining() },
       );
+    } catch (error) {
+      if (Date.now() >= deadline) {
+        throw new ConnectionError("Image generation timed out after 180 seconds");
+      }
+      throw error;
     } finally {
       await page.close();
     }
